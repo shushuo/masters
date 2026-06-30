@@ -18,7 +18,6 @@ crates/
   getmasters-mcp      built-in MCP servers — the rmcp Files server (Knowledge/Study/… follow)
   getmasters-cli      getmasters — `getmasters ping` (chat) and `getmasters agent --grant` (gated tool loop)
 ui/desktop        Tauri 2 + React + TS shell (src-tauri is NOT a workspace member)
-web               marketing landing page — standalone Vite + React + Tailwind site
 ```
 
 ## Toolchain
@@ -121,20 +120,10 @@ state in the repo (`GETMASTERS_DB_PATH=./getmasters.db`), enables dev CORS
 `VITE_GETMASTERS_PORT`/`VITE_GETMASTERS_TOKEN`. Open the printed URL in a browser on the host;
 Ctrl-C stops both.
 
-### Marketing landing page (`web/`)
+### Marketing landing page
 
-A standalone marketing site (Vite + React + TypeScript + Tailwind, the ADR-0002 stack) lives under
-`web/`, independent of the daemon and the desktop app. Its copy is driven by the data arrays at the
-top of `web/src/App.tsx`; the panda logo is `web/public/logo.svg` (kept in sync with `assets/logo.svg`).
-
-```bash
-make dev-web        # or: cd web && pnpm dev     — Vite dev server
-make web-build      # or: cd web && pnpm build   — tsc --noEmit + production build (headless OK)
-make web-install    # or: cd web && pnpm install
-```
-
-Don't confuse **`make dev-web`** (this marketing site) with **`make dev`** (the *desktop app* served
-headlessly) — they launch different apps.
+The marketing site lives in the separate **`masters-cloud`** repository (`apps/web`, a Next.js +
+Tailwind app), not in this repo. It is not part of this workspace.
 
 ## Phase 1a — tools, permissions, multi-provider
 

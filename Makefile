@@ -7,11 +7,9 @@ SHELL := bash
 .DEFAULT_GOAL := help
 
 UI_DIR := ui/desktop
-WEB_DIR := web
 
 .PHONY: help build test test-core test-live fmt clippy check run-server ping \
-        gen-openapi ui-install ui-build run-ui dev \
-        web-install web-build dev-web
+        gen-openapi ui-install ui-build run-ui dev
 
 help: ## List available targets.
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -65,14 +63,3 @@ run-ui: ## Full desktop app in dev mode — requires webkit/GTK + a display (NOT
 
 dev: ## Headless web dev path (WSL/browser): daemon + Vite wired together.
 	./scripts/dev-web.sh
-
-# --- Marketing site (web) --------------------------------------------------
-
-web-install: ## Install the marketing landing-page dependencies.
-	cd $(WEB_DIR) && pnpm install
-
-web-build: ## Type-check + production build of the landing page (headless).
-	cd $(WEB_DIR) && pnpm build
-
-dev-web: ## Run the marketing landing-page dev server (Vite).
-	cd $(WEB_DIR) && pnpm dev
