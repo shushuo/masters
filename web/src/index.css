@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-ink-950 text-mist font-sans antialiased;
+}
+
+/* Soft sage glow used behind the hero */
+.hero-glow {
+  background:
+    radial-gradient(60% 50% at 50% 0%, rgba(143, 179, 173, 0.18) 0%, rgba(21, 27, 30, 0) 70%);
+}
+
+.card-ring {
+  @apply border border-white/5 bg-ink-900/60;
+}

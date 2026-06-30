@@ -1,0 +1,49 @@
+[package]
+name = "getmasters-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Masters agent core: the Provider trait, the SQLite store, and the shared agent loop reused by the daemon and the CLI."
+
+[dependencies]
+getmasters-proto.workspace = true
+getmasters-mcp.workspace = true
+rmcp.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+rusqlite.workspace = true
+reqwest.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+eventsource-stream.workspace = true
+keyring.workspace = true
+walkdir.workspace = true
+# Optional sqlite-vec C extension for vec0 KNN (ADR-0004). Off by default: the brute-force
+# VectorIndex is always available, so the default build needs no C compiler.
+sqlite-vec = { version = "0.1", optional = true }
+# Optional document extractors (Phase 2c). Off by default so the lean library build stays small;
+# the daemon + CLI enable them. All pure-Rust (see root Cargo.toml).
+pdf-extract = { workspace = true, optional = true }
+zip = { workspace = true, optional = true }
+quick-xml = { workspace = true, optional = true }
+
+[features]
+default = []
+# Compile the deterministic offline `MockProvider` + the test-fake provider paths. Off by
+# default so production builds (the daemon) never include the fake; tests + the CLI dev harness
+# enable it. Pure-Rust, pulls no extra dependencies.
+testing = []
+# Enable the sqlite-vec (vec0) vector backend; falls back to brute-force if it can't load.
+sqlite-vec = ["dep:sqlite-vec"]
+# Enable PDF / DOCX text extraction for Knowledge ingest (ADR-0004 pipeline, pluggable Extractor).
+pdf = ["dep:pdf-extract"]
+docx = ["dep:zip", "dep:quick-xml"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "test-util"] }

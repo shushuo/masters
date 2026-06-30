@@ -1,0 +1,166 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Design tokens — "Panda" brand system, derived from the logo
+ * (assets/logo.svg): a warm cream face (#f3f3e7), a deep slate body
+ * (#445159), and muted sage-teal highlights (ears / eyes). All UI color
+ * flows through these CSS variables; the dark theme overrides them so
+ * components built on the token utilities recolor automatically (no `dark:`).
+ *
+ * Brand triad:
+ *   cream  #f3f3e7  → light canvas / surfaces, dark text
+ *   slate  #445159  → light accent / dark canvas, brand body
+ *   sage   #7ea39c  → secondary highlight, dark accent
+ */
+:root {
+  /* Let native controls (inputs, checkboxes, scrollbars) follow the OS theme. */
+  color-scheme: light dark;
+
+  /* typography */
+  --font-sans: "Inter var", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* surfaces — warm cream */
+  --color-bg: #faf9f1; /* app canvas (a touch lighter than the logo cream) */
+  --color-surface: #f3f1e6; /* sidebar / sunken panels — the logo cream */
+  --color-surface-2: #eae6d6; /* cards, hover wells */
+  --color-border: #e5e1d0; /* hairlines */
+  --color-border-strong: #d6d1bb; /* inputs, weightier dividers */
+
+  /* text — deep slate */
+  --color-text: #313c42; /* logo slate, darkened for body copy */
+  --color-text-muted: #5f6c72; /* secondary labels */
+  --color-text-faint: #8c959a; /* timestamps, slugs */
+
+  /* accent — brand slate */
+  --color-accent: #445159;
+  --color-accent-hover: #353f46;
+  --color-accent-fg: #f6f5ec; /* cream on slate */
+  --color-accent-subtle: #e6ece9; /* sage-tinted active-nav tint */
+
+  /* brand — for wordmark / decorative flourishes */
+  --color-brand: #445159;
+  --color-brand-sage: #7ea39c;
+
+  /* semantic state — earthy, tuned to the cream canvas */
+  --color-tool-bg: #f4efdf;
+  --color-tool-fg: #8a6d2f;
+  --color-tool-border: #e6dcbf;
+  --color-success: #4f7d5e;
+  --color-success-hover: #426a4f;
+  --color-danger: #b5524a;
+  --color-danger-hover: #9d453e;
+  --color-danger-bg: #f6e9e6;
+  --color-danger-fg: #9d453e;
+
+  /* radii — softened to echo the rounded mark */
+  --radius-sm: 7px;
+  --radius: 10px;
+  --radius-lg: 14px;
+
+  /* shadows (soft, warm-tinted) */
+  --shadow-sm: 0 1px 2px rgba(49, 60, 66, 0.05), 0 1px 1px rgba(49, 60, 66, 0.04);
+  --shadow: 0 2px 8px rgba(49, 60, 66, 0.08), 0 1px 2px rgba(49, 60, 66, 0.05);
+}
+
+/*
+ * Dark palette — deep slate canvas, warm cream text, sage-teal accent (slate
+ * would vanish against a slate-dark canvas, so the accent shifts to sage).
+ * Applied in two cases so the theme can both follow the OS and be pinned by
+ * the in-app toggle:
+ *   1. OS reports dark AND the user hasn't forced light (`:not([data-theme="light"])`)
+ *   2. The user explicitly picked dark (`[data-theme="dark"]`)
+ * Kept in sync with the duplicated block below by hand.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --color-bg: #1a2125;
+    --color-surface: #212a2f;
+    --color-surface-2: #2a343a;
+    --color-border: #313c42;
+    --color-border-strong: #3d4951;
+
+    --color-text: #eceadd;
+    --color-text-muted: #9aa6a8;
+    --color-text-faint: #6c777c;
+
+    --color-accent: #8fb3ad;
+    --color-accent-hover: #a6c6c1;
+    --color-accent-fg: #1a2125;
+    --color-accent-subtle: #28383a;
+
+    --color-brand: #8fb3ad;
+    --color-brand-sage: #8fb3ad;
+
+    --color-tool-bg: #2b2a1d;
+    --color-tool-fg: #d6bd84;
+    --color-tool-border: #3b3826;
+    --color-success: #5fae7d;
+    --color-success-hover: #6fbf8c;
+    --color-danger: #d97c70;
+    --color-danger-hover: #e2978d;
+    --color-danger-bg: #2e1e1c;
+    --color-danger-fg: #e2978d;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-bg: #1a2125;
+  --color-surface: #212a2f;
+  --color-surface-2: #2a343a;
+  --color-border: #313c42;
+  --color-border-strong: #3d4951;
+
+  --color-text: #eceadd;
+  --color-text-muted: #9aa6a8;
+  --color-text-faint: #6c777c;
+
+  --color-accent: #8fb3ad;
+  --color-accent-hover: #a6c6c1;
+  --color-accent-fg: #1a2125;
+  --color-accent-subtle: #28383a;
+
+  --color-brand: #8fb3ad;
+  --color-brand-sage: #8fb3ad;
+
+  --color-tool-bg: #2b2a1d;
+  --color-tool-fg: #d6bd84;
+  --color-tool-border: #3b3826;
+  --color-success: #5fae7d;
+  --color-success-hover: #6fbf8c;
+  --color-danger: #d97c70;
+  --color-danger-hover: #e2978d;
+  --color-danger-bg: #2e1e1c;
+  --color-danger-fg: #e2978d;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* Pinned light: force the light palette even when the OS is dark. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}

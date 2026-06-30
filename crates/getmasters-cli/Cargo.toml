@@ -1,0 +1,24 @@
+[package]
+name = "getmasters-cli"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Optional Masters CLI — links getmasters-core directly (no daemon). `getmasters ping` is the headless end-to-end smoke test."
+
+[[bin]]
+name = "getmasters"
+path = "src/main.rs"
+
+[dependencies]
+# Enable the pure-Rust PDF/DOCX extractors so the CLI ingests real documents (Phase 2c), plus
+# the `testing` feature: the CLI is a headless dev harness whose demo commands drive the offline
+# MockProvider via its `[[tool:…]]` trigger (no network, no key).
+getmasters-core = { workspace = true, features = ["pdf", "docx", "testing"] }
+getmasters-proto.workspace = true
+tokio.workspace = true
+futures.workspace = true
+clap.workspace = true
+anyhow.workspace = true
+tracing-subscriber.workspace = true

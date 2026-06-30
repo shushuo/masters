@@ -1,0 +1,133 @@
+name: Desktop Build
+
+# Builds unsigned macOS (Apple Silicon) and Windows (x64) installation packages for the
+# Masters Tauri desktop app. Runs on manual dispatch and on version-tag pushes; tag pushes
+# also publish a draft GitHub Release with the installers attached.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: desktop-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest        # Apple Silicon (arm64)
+            platform: macos
+          - os: windows-latest
+            platform: windows
+    runs-on: ${{ matrix.os }}
+    env:
+      TAURI_DIR: ui/desktop
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0   # fallback; rust-toolchain.toml (1.94) drives the actual channel
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Two scopes: the root workspace (getmastersd) and the excluded Tauri crate's own target.
+          workspaces: |
+            . -> target
+            ui/desktop/src-tauri -> target
+          key: ${{ matrix.platform }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: ui/desktop/pnpm-lock.yaml
+
+      - name: Install frontend deps
+        working-directory: ui/desktop
+        run: pnpm install --frozen-lockfile
+
+      # logo.svg is 400x364 (NOT square); tauri icon needs a square source, so pad to a
+      # centered 1024x1024 transparent PNG via sharp (bundled libvips, no system deps).
+      - name: Generate icons
+        shell: bash
+        working-directory: ui/desktop
+        run: |
+          mkdir -p src-tauri/icons
+          npx --yes sharp-cli@^5 \
+            -i ../../assets/logo.svg \
+            -o "$RUNNER_TEMP/icon-1024.png" \
+            resize 1024 1024 --fit contain --background "#00000000"
+          pnpm tauri icon "$RUNNER_TEMP/icon-1024.png"
+          ls -la src-tauri/icons
+
+      # Build getmastersd and place it as the triple-suffixed sidecar Tauri's externalBin expects.
+      - name: Build sidecar (getmastersd)
+        shell: bash
+        run: |
+          TRIPLE=$(rustc -Vv | sed -n 's/host: //p')
+          cargo build -p getmasters-server --bin getmastersd --release
+          EXE=""
+          [ "${{ matrix.platform }}" = "windows" ] && EXE=".exe"
+          mkdir -p "$TAURI_DIR/src-tauri/binaries"
+          cp "target/release/getmastersd$EXE" \
+             "$TAURI_DIR/src-tauri/binaries/getmastersd-$TRIPLE$EXE"
+          ls -la "$TAURI_DIR/src-tauri/binaries"
+
+      - name: Tauri build
+        working-directory: ui/desktop
+        run: pnpm tauri build
+
+      - name: Stage artifacts
+        shell: bash
+        run: |
+          BUNDLE="$TAURI_DIR/src-tauri/target/release/bundle"
+          mkdir -p dist-installers
+          find "$BUNDLE" -type f \
+            \( -name "*.dmg" -o -name "*.msi" -o -name "*-setup.exe" \) \
+            -exec cp {} dist-installers/ \;
+          ls -la dist-installers
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: getmasters-${{ matrix.platform }}
+          path: dist-installers/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: artifacts/*
+          generate_release_notes: true
+          body: |
+            > **Unsigned build.** macOS: right-click Masters.app → Open (or
+            > `xattr -dr com.apple.quarantine /Applications/Masters.app`). Windows:
+            > SmartScreen → "More info" → "Run anyway".

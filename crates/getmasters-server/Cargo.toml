@@ -1,0 +1,72 @@
+[package]
+name = "getmasters-server"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "getmastersd — Masters's local axum daemon exposing the agent core over a loopback HTTP + WebSocket API."
+
+[lib]
+name = "getmasters_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "getmastersd"
+path = "src/main.rs"
+
+[[bin]]
+name = "gen_openapi"
+path = "src/bin/gen_openapi.rs"
+
+# A minimal stdio MCP server used as the test fixture for external connectors (Phase 4d): it lets
+# the connector integration test spawn a real MCP server with no external dependency (no npx).
+[[bin]]
+name = "mcp-echo"
+path = "src/bin/mcp_echo.rs"
+
+# A minimal stdio ACP agent used as the test fixture for external ACP master agents (Phase 4i):
+# the integration test spawns it as a real ACP harness with no external dependency.
+[[bin]]
+name = "acp-echo"
+path = "src/bin/acp_echo.rs"
+
+[dependencies]
+# Enable the pure-Rust PDF/DOCX extractors so the daemon ingests real documents (Phase 2c).
+getmasters-core = { workspace = true, features = ["pdf", "docx"] }
+getmasters-proto.workspace = true
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# Recipe definitions are YAML (docs/04 §4); maintained fork of serde_yaml. Kept out of the lean core.
+serde_yaml_ng = "0.10"
+# Cron parsing + next-fire math for the Scheduler (FR-17); server-only so the core stays cron-free.
+cron = "0.17"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+# SMTP for outbound email delivery (FR-27); server-only. rustls (matches reqwest) to avoid a system
+# OpenSSL dep and stay headless-friendly. Blocking `SmtpTransport`, wrapped in spawn_blocking.
+lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "rustls-tls", "hostname"] }
+uuid.workspace = true
+utoipa.workspace = true
+# Resolve the platform user-home so the daemon roots its data home at `~/.getmasters` on first run
+# (server-only; pure-Rust, no system libs — keeps the lean core untouched).
+dirs = "6"
+# rmcp powers the `mcp-echo` stdio fixture bin (Phase 4d external-connector test).
+rmcp.workspace = true
+futures.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+agent-client-protocol = "1.0.0"
+
+[dev-dependencies]
+# Enable the `testing` feature so the offline MockProvider fake is available to the integration
+# tests (and, via Cargo feature unification, to getmasters-core's own tests under `cargo test`).
+getmasters-core = { workspace = true, features = ["testing"] }
+reqwest = { workspace = true, features = ["json"] }
+# Plain `ws://` only (loopback) — no TLS feature needed, which avoids a system OpenSSL dep.
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect"] }
+futures-util = "0.3"

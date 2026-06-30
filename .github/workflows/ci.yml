@@ -1,0 +1,66 @@
+name: CI
+
+# Continuous integration for the Rust workspace (the Tauri desktop crate is excluded from
+# the workspace — see root Cargo.toml — and built separately by desktop-build.yml). Runs
+# fmt, clippy, build, and the test suite, mirroring the Justfile recipes. Headless-safe:
+# rusqlite is `bundled` (no system sqlite) and keyring uses the pure-Rust zbus Secret
+# Service backend on Linux, so no extra system packages are required.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # The integration-test binaries statically link several large crates (aws-lc-sys, ring,
+  # lopdf, …); with full debuginfo each is hundreds of MB, and ~30 of them filled the
+  # runner's disk, crashing the linker with SIGBUS. Drop debuginfo in CI — we don't debug
+  # binaries here, only run them — to keep target/ small and linking cheap. Applied to both
+  # `dev` and `test` since the test profile inherits dev for dependencies.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+
+jobs:
+  test:
+    name: fmt · clippy · build · test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # Match rust-toolchain.toml (channel "1.94") exactly so the rustfmt/clippy that
+          # run here are the same patch release a contributor gets locally — a pinned
+          # patch (e.g. 1.94.0) would format/lint differently and fail spuriously.
+          toolchain: "1.94"
+          components: rustfmt, clippy
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      # Lint the whole workspace, including the feature-gated extractors and vector backend
+      # so they don't bit-rot. Warnings fail the build (matches the `just clippy` recipe).
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --features sqlite-vec,pdf,docx -- -D warnings
+
+      # Same feature set as Test (and Clippy) so the whole workspace compiles exactly once —
+      # a featureless build here would leave a second full copy of every artifact in target/,
+      # doubling disk use and contributing to the linker exhaustion above.
+      - name: Build
+        run: cargo build --workspace --all-targets --features sqlite-vec,pdf,docx
+
+      # Live Anthropic provider tests are #[ignore]d and need a key + network, so the default
+      # run skips them. Exercise the feature-gated code paths (sqlite-vec / pdf / docx).
+      - name: Test
+        run: cargo test --workspace --features sqlite-vec,pdf,docx

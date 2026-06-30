@@ -1,0 +1,38 @@
+{
+  "name": "getmasters-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Masters desktop shell (Tauri 2 + React + TypeScript). Owns the getmastersd lifecycle.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "gen-api": "openapi-typescript src/api/openapi.json -o src/api/schema.ts",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-shell": "^2.0.0",
+    "lucide-react": "^1.21.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "openapi-typescript": "^7.4.4",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

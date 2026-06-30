@@ -1,0 +1,23 @@
+# Tauri desktop app crate.
+#
+# DELIBERATELY NOT a member of the root Cargo workspace (see root Cargo.toml `exclude`):
+# building it needs webkit/GTK + a display, which a headless CI/container lacks. Keeping it
+# separate lets `cargo build --workspace` stay green there. Build this only on a real desktop.
+[package]
+name = "getmasters-desktop"
+version = "0.1.0"
+edition = "2021"
+description = "Masters desktop shell (Tauri 2). Owns the getmastersd daemon lifecycle."
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+# Used by `tauri build` for the production asset protocol.
+custom-protocol = ["tauri/custom-protocol"]

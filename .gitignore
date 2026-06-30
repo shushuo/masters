@@ -1,0 +1,27 @@
+# Rust
+/target
+**/*.rs.bk
+Cargo.lock.bak
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
+# Node / front-end
+node_modules/
+dist/
+ui/desktop/dist/
+ui/desktop/node_modules/
+
+# Tauri build output
+ui/desktop/src-tauri/target/
+ui/desktop/src-tauri/gen/
+
+# Generated API client (regenerated from the daemon's OpenAPI via `just gen-openapi`)
+# (kept out of VCS noise; regenerate with the gen-openapi target)
+ui/desktop/src/api/openapi.json
+
+# Editor / OS
+.DS_Store
+*.swp

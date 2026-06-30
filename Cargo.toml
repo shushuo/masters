@@ -1,0 +1,62 @@
+# Masters — Rust Cargo workspace (Phase 0 — Foundations).
+# See docs/02-architecture.md §2 for the crate layout and docs/03-tech-stack.md for choices.
+#
+# NOTE: `ui/desktop/src-tauri` is deliberately NOT a workspace member. It is its own
+# Cargo project so a plain `cargo build`/`cargo test` here never compiles Tauri (which
+# needs webkit/a display and cannot build headless). Keep it excluded.
+[workspace]
+resolver = "2"
+members = [
+    "crates/getmasters-proto",
+    "crates/getmasters-core",
+    "crates/getmasters-server",
+    "crates/getmasters-mcp",
+    "crates/getmasters-cli",
+]
+exclude = ["ui/desktop/src-tauri"]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.94"
+license = "MIT"
+repository = "https://github.com/shushuo/pandawork"
+
+# Shared dependency pins — every crate references these with `workspace = true`.
+# Versions verified current at implementation time (cargo search); docs/03 mandates
+# re-confirming at build time rather than fixing them in prose.
+[workspace.dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "signal", "io-util", "time"] }
+axum = { version = "0.8", features = ["ws", "macros"] }
+tower = "0.5"
+tower-http = { version = "0.7", features = ["trace", "cors"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls", "webpki-roots", "http2"] }
+# 0.32 pins libsqlite3-sys 0.28, whose build script compiles on stable 1.94
+# (rusqlite 0.40 → libsqlite3-sys 0.38 needs the unstable `cfg_select`).
+rusqlite = { version = "0.32", features = ["bundled"] }
+utoipa = { version = "5", features = ["uuid"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+futures = "0.3"
+async-trait = "0.1"
+eventsource-stream = "0.2"
+clap = { version = "4", features = ["derive"] }
+# MCP (ADR-0005). `rmcp::schemars` is re-exported, so no separate schemars pin is needed.
+rmcp = { version = "1", features = ["server", "client", "macros", "transport-io", "transport-async-rw", "transport-child-process", "schemars"] }
+walkdir = "2"
+# OS keychain for secrets (docs/06 §4). Pure-Rust zbus Secret Service backend on Linux.
+keyring = "4"
+# Document extraction (Phase 2c, feature-gated in getmasters-core). All pure-Rust, no C/system libs:
+# pdf-extract pulls lopdf + font/cmap parsers; zip's `deflate` uses flate2→miniz_oxide (no zlib-sys).
+pdf-extract = "0.12"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+quick-xml = "0.40"
+
+# Internal crates
+getmasters-proto = { path = "crates/getmasters-proto" }
+getmasters-core = { path = "crates/getmasters-core" }
+getmasters-mcp = { path = "crates/getmasters-mcp" }
