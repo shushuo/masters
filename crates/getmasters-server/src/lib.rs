@@ -10,6 +10,7 @@ pub mod bundle;
 pub mod delivery;
 pub mod group;
 pub mod home;
+pub mod install;
 pub mod master;
 pub mod master_templates;
 pub mod openapi;

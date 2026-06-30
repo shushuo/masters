@@ -20,6 +20,7 @@ import {
 } from "../api/client";
 import { Badge, type BadgeProps, Button, IconButton, Input, Select } from "./ui";
 import { cn } from "./ui/cn";
+import { checkForUpdate, installUpdate } from "../lib/updater";
 
 type SectionKey = "model" | "keys" | "environment" | "email" | "about";
 
@@ -441,10 +442,44 @@ function EnvironmentPanel({
   const [check, setCheck] = useState<ConfigCheckDto | null>(null);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [telemetry, setTelemetry] = useState<boolean | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<string | null>(null);
+  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     client.getEnvironment().then(setEnv).catch((e) => setError(String(e)));
+    client
+      .getSettings()
+      .then((s) => setTelemetry(s.telemetry_enabled ?? true))
+      .catch(() => setTelemetry(null));
   }, [client]);
+
+  async function toggleTelemetry(enabled: boolean) {
+    setTelemetry(enabled);
+    try {
+      await client.updateSettings({ telemetry_enabled: enabled });
+    } catch (e) {
+      setError(`Error: ${String(e)}`);
+    }
+  }
+
+  async function checkUpdates() {
+    setUpdating(true);
+    setUpdateStatus("Checking…");
+    try {
+      const update = await checkForUpdate();
+      if (!update) {
+        setUpdateStatus("You're on the latest version.");
+        return;
+      }
+      setUpdateStatus(`Updating to v${update.version}…`);
+      await installUpdate(update); // downloads, installs, and relaunches
+    } catch (e) {
+      setUpdateStatus(`Update failed: ${String(e)}`);
+    } finally {
+      setUpdating(false);
+    }
+  }
 
   async function runCheck() {
     setChecking(true);
@@ -510,6 +545,22 @@ function EnvironmentPanel({
         </div>
       )}
 
+      {telemetry !== null && (
+        <label className="mt-3 flex items-start gap-2 text-xs text-muted">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={telemetry}
+            onChange={(e) => toggleTelemetry(e.target.checked)}
+          />
+          <span>
+            <span className="text-text">Anonymous install telemetry</span> — reports a single random
+            install id + platform/version once, so installs can be counted. No file or personal data
+            is sent. Uncheck to opt out.
+          </span>
+        </label>
+      )}
+
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button variant="secondary" size="sm" onClick={runCheck} disabled={checking}>
           {checking ? "Checking…" : "Check configuration"}
@@ -517,7 +568,11 @@ function EnvironmentPanel({
         <Button variant="ghost" size="sm" onClick={onRerunSetup}>
           Re-run setup wizard
         </Button>
+        <Button variant="ghost" size="sm" onClick={checkUpdates} disabled={updating}>
+          {updating ? "Checking…" : "Check for updates"}
+        </Button>
       </div>
+      {updateStatus && <p className="mt-2 text-xs text-muted">{updateStatus}</p>}
 
       {check && (
         <ul className="mt-3 space-y-1">

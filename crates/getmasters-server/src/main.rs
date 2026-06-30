@@ -69,6 +69,13 @@ async fn main() -> anyhow::Result<()> {
     // Fire scheduled recipes while the daemon is alive (FR-17; docs/02 §5).
     getmasters_server::scheduler::spawn(state.clone());
 
+    // Report a one-time anonymous install event (on by default, opt-out; docs/06). Spawned
+    // non-blocking so an unreachable backend never delays daemon readiness.
+    tokio::spawn(getmasters_server::install::report_install(
+        state.agent.store().clone(),
+        state.version.to_string(),
+    ));
+
     let app = build_app(state);
 
     // Loopback only, ephemeral port (docs/06 §3).

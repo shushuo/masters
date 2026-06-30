@@ -593,6 +593,9 @@ pub struct SettingsDto {
     pub anthropic_key_set: bool,
     /// Whether an OpenAI API key is configured (keychain or env).
     pub openai_key_set: bool,
+    /// Whether anonymous install telemetry is enabled (on by default; opt-out).
+    #[serde(default = "default_true")]
+    pub telemetry_enabled: bool,
 }
 
 /// The resolved runtime environment (the `hermes config` view analogue). Read-only; surfaces where
@@ -654,6 +657,9 @@ pub struct SettingsUpdate {
     /// Per-provider base-URL overrides keyed by catalog id; `""` clears an override.
     #[serde(default)]
     pub provider_bases: Option<HashMap<String, String>>,
+    /// Enable/disable anonymous install telemetry (opt-out; on by default).
+    #[serde(default)]
+    pub telemetry_enabled: Option<bool>,
 }
 
 /// One provider in the configurable catalog, with its current (non-secret) state.

@@ -119,8 +119,14 @@ flowchart LR
   device: OS notifications stay on-device, while an opt-in **email digest** sends routine output to a
   user-configured address — a `send` action that is off by default, approval-gated, redaction-aware, and shows
   exactly what leaves before it goes.
-- Masters itself has **no telemetry backend** in the local-first design; any opt-in analytics would be
-  explicit and off by default.
+- **Anonymous install reporting** is the only analytics path off the device: on first run the desktop sends a
+  **single** event to `getmasters.app` carrying a **random per-install UUID** (generated locally, no hardware id),
+  the coarse **platform** (`mac`/`windows`/`linux`) and the **app version** — nothing else, and never any file,
+  prompt, or personal data. It is sent **once per install** (retried only until it succeeds) and is **opt-out**:
+  disable it from Settings → Environment, or set `GETMASTERS_NO_TELEMETRY` (or `telemetry_enabled=false`). The
+  cloud endpoint upserts by the UUID, so it counts installs without identifying users.
+- **Update checks** ([Part C auto-update](../README.md)) query the `getmasters.app` update manifest with the
+  current version + platform only; the desktop downloads and verifies a signed artifact before installing.
 
 ## 6. Audit & reversibility
 

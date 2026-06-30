@@ -291,6 +291,24 @@ first run — so an installed app never writes to an unpredictable working dir. 
 first-run **Onboarding** (`ui/desktop/src/components/Onboarding.tsx`, gated on effective provider =
 `mock`) to set provider/key + an optional project & folder grant.
 
+**Install telemetry + auto-update (infra):** the daemon reports a **single anonymous install event**
+on first run — `getmasters_server::install::report_install` (spawned non-blocking from `main.rs`)
+generates a random per-data-home `install_id` (settings table, no migration), detects the platform
+(`os_type()`), and POSTs `{install_id, platform, os, app_version}` to `{base}/api/installs` (default
+`https://getmasters.app`, env `GETMASTERS_TELEMETRY_URL`). It's **once per install** (gated on
+`install_reported_at`, retried until 2xx) and **opt-out** (`GETMASTERS_NO_TELEMETRY` env or the
+`telemetry_enabled` setting, surfaced as a checkbox in Settings → Environment; docs/06). The cloud
+(`masters-cloud/apps/web`) receives it at `POST /api/installs` (Prisma + Postgres `InstallEvent`,
+upsert by `installId` so retries don't duplicate). **In-app auto-update** uses
+`tauri-plugin-updater` + `tauri-plugin-process` (`ui/desktop/src-tauri`, `plugins.updater` →
+`https://getmasters.app/api/update/{{target}}/{{arch}}/{{current_version}}`, `createUpdaterArtifacts`);
+the renderer checks on startup (`ui/desktop/src/lib/updater.ts`, App.tsx banner + Settings button) and
+downloads/verifies/installs a signed build, then relaunches. The cloud serves the Tauri dynamic
+manifest from the latest GitHub release (`apps/web/src/lib/update.ts` → `/api/update/...`), and CI
+(`desktop-build.yml`) signs updater artifacts via `TAURI_SIGNING_PRIVATE_KEY*` secrets and uploads
+`*.app.tar.gz`/`*-setup.exe`/`*.nsis.zip` + `.sig` to the release. The updater **pubkey** in
+`tauri.conf.json` is a placeholder until the keypair is generated (`tauri signer generate`).
+
 **Desktop UI layer** (post-bundle-only enhancement): a Notion/Manus-inspired **design system** —
 CSS-variable tokens with an OS-following **and** manually-pinned theme (`ui/desktop/src/index.css` +
 `src/lib/theme.ts`, a system/light/dark toggle in the `Sidebar`) and dependency-light shared

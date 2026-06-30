@@ -35,6 +35,11 @@ fn current(state: &AppState) -> SettingsDto {
         openai_base_url: cfg.openai_base_url,
         anthropic_key_set: cfg.anthropic_api_key.is_some(),
         openai_key_set: cfg.openai_api_key.is_some(),
+        // Anonymous install telemetry is on by default; only an explicit "false" disables it.
+        telemetry_enabled: !matches!(
+            state.agent.store().get_setting("telemetry_enabled"),
+            Ok(Some(v)) if v == "false"
+        ),
     }
 }
 
@@ -87,6 +92,9 @@ pub async fn update(
             }
             store.set_setting(&catalog::base_setting_key(id), base)?;
         }
+    }
+    if let Some(enabled) = body.telemetry_enabled {
+        store.set_setting("telemetry_enabled", if enabled { "true" } else { "false" })?;
     }
     // Provider/model changes take effect for new daemon launches; active sessions keep the
     // provider resolved at startup (live provider swap is a later refinement).

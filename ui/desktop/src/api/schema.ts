@@ -1450,6 +1450,8 @@ export interface components {
             openai_key_set: boolean;
             /** @description `"anthropic" | "openai"`. */
             provider: string;
+            /** @description Whether anonymous install telemetry is enabled (on by default; opt-out). */
+            telemetry_enabled?: boolean;
         };
         /** @description Partial update of non-secret settings (only present fields change). */
         SettingsUpdate: {
@@ -1461,6 +1463,8 @@ export interface components {
             provider_bases?: {
                 [key: string]: string;
             } | null;
+            /** @description Enable/disable anonymous install telemetry (opt-out; on by default). */
+            telemetry_enabled?: boolean | null;
         };
         /** @description One saved skill (name + summary), read-only for the UI. */
         SkillDto: {

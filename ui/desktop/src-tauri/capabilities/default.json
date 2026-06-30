@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Core permissions plus the shell capability needed to spawn the getmastersd sidecar.",
+  "description": "Core permissions, the shell capability to spawn the getmastersd sidecar, and the updater + process (relaunch) capabilities for in-app auto-update.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -9,6 +9,8 @@
     {
       "identifier": "shell:allow-execute",
       "allow": [{ "name": "binaries/getmastersd", "sidecar": true }]
-    }
+    },
+    "updater:default",
+    "process:allow-restart"
   ]
 }
