@@ -419,11 +419,9 @@ setup: `cargo build`, task runners covering OpenAPI generation and a `run-ui` ta
 `make`-based equivalent) are wired up; every recipe maps to a raw `cargo`/`pnpm` command. Notable targets:
 `build`, `test`, `fmt`, `clippy`, `check`, `gen-openapi`, `run-ui` (full Tauri app — needs a desktop), and
 **`make dev`** (`scripts/dev-web.sh` — the headless web path: the *desktop app* served as a plain web page,
-daemon + Vite wired together, for WSL/browser dev). A separate **marketing landing page** lives under `web/`
-(its own Vite + React + Tailwind app, the ADR-0002 stack) with **`make dev-web`** (Vite dev server),
-`make web-build` (headless `tsc` + Vite build), and `make web-install`. **Mind the names:** `make dev` runs the
-*desktop app* headlessly, while `make dev-web` runs the standalone *marketing site* — they are different apps.
-See `DEVELOPMENT.md` for the full workflow.
+daemon + Vite wired together, for WSL/browser dev). The **marketing landing page** lives in the separate
+**`masters-cloud`** repository (Next.js + Tailwind), not in this repo. See `DEVELOPMENT.md` for the full
+workflow.
 
 ## Repo conventions
 
