@@ -981,6 +981,27 @@ impl Store {
         Ok(row)
     }
 
+    /// Delete a project skill by slug (removing its FTS row too).
+    pub fn delete_skill(&self, project_id: &str, slug: &str) -> Result<()> {
+        let mut conn = self.lock();
+        let tx = conn.transaction()?;
+        let existing: Option<(String, Option<i64>)> = tx
+            .query_row(
+                "SELECT id, fts_rowid FROM skills WHERE project_id = ?1 AND slug = ?2",
+                rusqlite::params![project_id, slug],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        if let Some((id, rowid)) = existing {
+            if let Some(rowid) = rowid {
+                fts_delete(&tx, rowid)?;
+            }
+            tx.execute("DELETE FROM skills WHERE id = ?1", rusqlite::params![id])?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     /// All skills for a project.
     pub fn list_skills(&self, project_id: &str) -> Result<Vec<SkillRow>> {
         let conn = self.lock();
@@ -1431,6 +1452,62 @@ impl Store {
     pub fn delete_global_master(&self, slug: &str) -> Result<()> {
         self.lock().execute(
             "DELETE FROM global_masters WHERE slug = ?1",
+            rusqlite::params![slug],
+        )?;
+        Ok(())
+    }
+
+    // --- Global (standalone) skills (Phase: cloud catalog sync) --------------
+
+    /// Upsert a global skill by `slug` (no FTS — global skills are managed/synced content).
+    pub fn upsert_global_skill(
+        &self,
+        slug: &str,
+        name: &str,
+        summary: &str,
+        body: &str,
+        source_file: &str,
+    ) -> Result<()> {
+        let ts = now_ms();
+        self.lock().execute(
+            "INSERT INTO global_skills (id, slug, name, summary, body, source_file, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(slug) DO UPDATE SET
+                name = ?3, summary = ?4, body = ?5, source_file = ?6, updated_at = ?7",
+            rusqlite::params![new_id(), slug, name, summary, body, source_file, ts],
+        )?;
+        Ok(())
+    }
+
+    /// All global skills (listing metadata), by name.
+    pub fn list_global_skills(&self) -> Result<Vec<SkillRow>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(
+            "SELECT id, slug, name, summary, body, source_file FROM global_skills ORDER BY name",
+        )?;
+        let rows = stmt
+            .query_map([], Self::map_skill)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// One global skill's index row by slug.
+    pub fn get_global_skill(&self, slug: &str) -> Result<Option<SkillRow>> {
+        let conn = self.lock();
+        let row = conn
+            .query_row(
+                "SELECT id, slug, name, summary, body, source_file FROM global_skills WHERE slug = ?1",
+                rusqlite::params![slug],
+                Self::map_skill,
+            )
+            .optional()?;
+        Ok(row)
+    }
+
+    /// Delete a global skill's index row.
+    pub fn delete_global_skill(&self, slug: &str) -> Result<()> {
+        self.lock().execute(
+            "DELETE FROM global_skills WHERE slug = ?1",
             rusqlite::params![slug],
         )?;
         Ok(())

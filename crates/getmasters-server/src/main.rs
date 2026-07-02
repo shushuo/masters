@@ -76,6 +76,18 @@ async fn main() -> anyhow::Result<()> {
         state.version.to_string(),
     ));
 
+    // Best-effort sync of the public system masters + skills catalog from the cloud (opt-out via
+    // GETMASTERS_NO_CATALOG_SYNC). Non-blocking + version-gated; failures are logged and retried
+    // next launch or on a manual POST /catalog/sync.
+    if !getmasters_server::catalog::startup_sync_disabled() {
+        let sync_state = state.clone();
+        tokio::spawn(async move {
+            if let Err(e) = getmasters_server::catalog::sync_catalog(sync_state, false).await {
+                tracing::warn!("startup catalog sync failed: {e}");
+            }
+        });
+    }
+
     let app = build_app(state);
 
     // Loopback only, ephemeral port (docs/06 §3).

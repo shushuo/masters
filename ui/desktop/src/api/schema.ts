@@ -20,6 +20,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/catalog/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["catalog_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/catalog/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["sync_catalog"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -772,6 +804,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_global_skills"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skills/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_global_skill"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_global_skill"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -825,6 +889,32 @@ export interface components {
         BundleImportResult: {
             masters: string[];
             team_slug: string;
+        };
+        /**
+         * @description The cloud-hosted catalog of public **system** masters + skills the app syncs down.
+         *     `version` is an opaque token (the cloud's max `updated_at`) the app stores to skip unchanged syncs.
+         */
+        CatalogDto: {
+            masters?: components["schemas"]["MasterDto"][];
+            skills?: components["schemas"]["SkillDto"][];
+            version: string;
+        };
+        /** @description Result/state of a catalog sync: the last-synced version + time and how many entries are installed. */
+        CatalogStatusDto: {
+            /**
+             * Format: int32
+             * @description Count of installed global masters.
+             */
+            masters: number;
+            /**
+             * Format: int32
+             * @description Count of installed global skills.
+             */
+            skills: number;
+            /** @description ISO/epoch timestamp of the last successful sync, or null. */
+            synced_at?: string | null;
+            /** @description The last successfully-synced catalog version, or null if never synced. */
+            version?: string | null;
         };
         /** @description A command sent from the client (desktop) to the daemon over the WebSocket. */
         ClientCommand: {
@@ -1466,11 +1556,17 @@ export interface components {
             /** @description Enable/disable anonymous install telemetry (opt-out; on by default). */
             telemetry_enabled?: boolean | null;
         };
-        /** @description One saved skill (name + summary), read-only for the UI. */
+        /**
+         * @description One saved skill. `tags`/`steps` carry the full definition for the cloud catalog + import; the
+         *     read-only list endpoints leave them empty (both `#[serde(default)]`, backward-compatible).
+         */
         SkillDto: {
             name: string;
             slug: string;
+            /** @description The Markdown body (the steps). */
+            steps?: string;
             summary: string;
+            tags?: string[];
         };
         /** @description A project's active adaptive study plan, read-only for the UI (Phase 3b, FR-15). */
         StudyPlanDto: {
@@ -1551,6 +1647,53 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AvailableHarnessDto"][];
                 };
+            };
+        };
+    };
+    catalog_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Last-synced version/time + installed counts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogStatusDto"];
+                };
+            };
+        };
+    };
+    sync_catalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Catalog synced; returns the new status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogStatusDto"];
+                };
+            };
+            /** @description Could not reach or parse the cloud catalog */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -3081,6 +3224,77 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Secret removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_global_skills: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Standalone (system) skills */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillDto"][];
+                };
+            };
+        };
+    };
+    get_global_skill: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Skill slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The skill (full definition) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillDto"];
+                };
+            };
+            /** @description No such skill */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    delete_global_skill: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Skill slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
             204: {
                 headers: {
                     [name: string]: unknown;

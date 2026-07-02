@@ -127,6 +127,11 @@ flowchart LR
   cloud endpoint upserts by the UUID, so it counts installs without identifying users.
 - **Update checks** ([Part C auto-update](../README.md)) query the `getmasters.app` update manifest with the
   current version + platform only; the desktop downloads and verifies a signed artifact before installing.
+- **Catalog sync** pulls the *public* system-master/skill catalog (`GET getmasters.app/api/catalog`) into the
+  global stores. The request carries **no** identifying data (a plain GET), only downloads public content, and
+  **never overwrites your own masters/skills** (system entries are tagged `origin:"system"` and a same-slug
+  user master is left untouched). It runs best-effort on startup (opt-out `GETMASTERS_NO_CATALOG_SYNC`) and on
+  demand from the Masters view.
 
 ## 6. Audit & reversibility
 

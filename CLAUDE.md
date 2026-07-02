@@ -353,6 +353,23 @@ session+roster-generalized `GroupChat.tsx` (new optional `openSession`/`members`
 `backLabel` props; the Teams tab path is unchanged). Client methods: `listMasterTemplates`,
 `{list,get,create,delete}GlobalMaster`, `{get,set}DefaultMaster`, `startQuickChat` (bundle-only).
 
+**Cloud catalog sync (public system masters + skills):** system content is no longer baked into the
+binary — the desktop syncs a **cloud-hosted catalog** so it changes without an app release. **Skills
+gained the global tier masters got in 0018**: migration 0019 `global_skills`, a `Scope`/`SkillStore::global`
+(`skills/mod.rs`, files under `<data_home>/skills/`), `Store::{upsert,list,get,delete}_global_skill` +
+project `delete_skill`, `AppState::global_skill_store()`, and endpoints `GET /skills` + `GET/DELETE
+/skills/{slug}` (`routes/skills_global.rs`). `getmasters-server::catalog` fetches `GET
+{GETMASTERS_CATALOG_URL|getmasters.app}/api/catalog` (`CatalogDto { version, masters: [MasterDto], skills:
+[SkillDto] }`; `SkillDto` gained `#[serde(default)]` `tags`/`steps`) and `apply_catalog` installs masters via
+`from_dto` → `global_master_store().create()` (tagged `origin:"system"`, **skipping same-slug user masters**)
+and skills via `global_skill_store().create_skill()`; it's **version-gated** (settings `catalog_version`) and
+runs best-effort on startup (opt-out `GETMASTERS_NO_CATALOG_SYNC`) + `POST /catalog/sync` / `GET
+/catalog/status`. Desktop `MastersHub.tsx` gains a **Sync from cloud** button + a **System Skills** tab
+(`syncCatalog`/`getCatalogStatus`/`listGlobalSkills`/`deleteGlobalSkill`). The cloud
+(`masters-cloud/apps/web`) serves it from Prisma `SystemMaster`/`SystemSkill` tables (seeded via
+`prisma/seed.ts` from the former builtin gallery) at `GET /api/catalog` (`src/lib/catalog.ts`); the baked-in
+`GET /masters/templates` remains as an offline fallback.
+
 **Deferred to Phase 3 (later slices) and Phase 4:** the per-session **audit-log viewer** (`GET
 /sessions/{id}/audit`) and **group `max_rounds` over the WS stream** have since landed in the Desktop
 UI layer above; still-deferred **group-chat extensions** beyond the 4c/4e/4f/4g slices

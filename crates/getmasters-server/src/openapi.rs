@@ -4,7 +4,8 @@
 use utoipa::OpenApi;
 
 use getmasters_proto::{
-    AddGrantRequest, AuditEntryDto, AvailableHarnessDto, BundleImportResult, ClientCommand,
+    AddGrantRequest, AuditEntryDto, AvailableHarnessDto, BundleImportResult, CatalogDto,
+    CatalogStatusDto, ClientCommand,
     ConfigCheckDto, ConfigCheckItem, ConnectorDto, CreateConnectorRequest, CreateProjectRequest,
     CreateScheduleRequest, CreateSessionRequest, CreateTeamRequest, DeckDto, DefaultMasterDto,
     DocumentDto, EmailSettingsDto, EmailSettingsUpdate, EnvironmentDto, ErrorDto, ExtensionDto,
@@ -87,6 +88,11 @@ use getmasters_proto::{
         crate::routes::projects::list_extensions,
         crate::routes::projects::set_extension,
         crate::routes::acp::harnesses,
+        crate::routes::skills_global::list,
+        crate::routes::skills_global::get,
+        crate::routes::skills_global::delete,
+        crate::routes::catalog::sync,
+        crate::routes::catalog::status,
     ),
     components(schemas(
         HealthDto,
@@ -113,6 +119,8 @@ use getmasters_proto::{
         SetInstructionsRequest,
         MemoryDto,
         SkillDto,
+        CatalogDto,
+        CatalogStatusDto,
         DeckDto,
         StudyPlanDto,
         RecipeDto,

@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import {
+  BookText,
   MessagesSquare,
   Pencil,
+  RefreshCw,
   Sparkles,
   Star,
   Trash2,
@@ -10,15 +12,17 @@ import {
 import {
   MastersClient,
   type AvailableHarnessDto,
+  type CatalogStatusDto,
   type MasterDto,
   type MasterSummaryDto,
+  type SkillDto,
 } from "../api/client";
 import { Badge, Button, Card } from "./ui";
 import { cn } from "./ui/cn";
 import { MasterForm, blankMaster } from "./Masters";
 import { GroupChat } from "./GroupChat";
 
-type Tab = "explore" | "mine";
+type Tab = "explore" | "mine" | "skills";
 
 /**
  * **Masters** sidebar hub (top-level, no project required). Two tabs:
@@ -39,10 +43,15 @@ export function MastersHub({ client }: { client: MastersClient }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [chat, setChat] = useState<{ masters: string[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [skills, setSkills] = useState<SkillDto[] | null>(null);
+  const [catStatus, setCatStatus] = useState<CatalogStatusDto | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   function refresh() {
     client.listGlobalMasters().then(setMasters).catch((e) => setError(String(e)));
     client.getDefaultMaster().then(setDefaultSlug).catch(() => {});
+    client.listGlobalSkills().then(setSkills).catch(() => setSkills([]));
+    client.getCatalogStatus().then(setCatStatus).catch(() => {});
   }
   useEffect(() => {
     refresh();
@@ -50,6 +59,29 @@ export function MastersHub({ client }: { client: MastersClient }) {
     client.getHarnesses().then(setHarnesses).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client]);
+
+  // Pull the latest public system masters + skills from the cloud, then refresh the lists.
+  async function syncFromCloud() {
+    setSyncing(true);
+    setError(null);
+    try {
+      setCatStatus(await client.syncCatalog());
+      refresh();
+    } catch (e) {
+      setError(`Sync failed: ${String(e)}`);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function removeSkill(slug: string) {
+    try {
+      await client.deleteGlobalSkill(slug);
+      refresh();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
 
   async function save(master: MasterDto) {
     try {
@@ -135,6 +167,17 @@ export function MastersHub({ client }: { client: MastersClient }) {
         <span className="text-sm text-muted">
           Explore system masters and create your own — then chat with one or many.
         </span>
+        <div className="ml-auto flex items-center gap-2">
+          {catStatus?.synced_at && (
+            <span className="text-xs text-faint">
+              Synced · {catStatus.masters} masters, {catStatus.skills} skills
+            </span>
+          )}
+          <Button variant="secondary" size="sm" onClick={syncFromCloud} disabled={syncing}>
+            <RefreshCw className={cn("size-3.5", syncing && "animate-spin")} />
+            {syncing ? "Syncing…" : "Sync from cloud"}
+          </Button>
+        </div>
       </header>
 
       <nav className="flex gap-1 border-b border-border px-3 text-sm">
@@ -142,6 +185,7 @@ export function MastersHub({ client }: { client: MastersClient }) {
           [
             { key: "explore", label: "Explore", icon: Sparkles },
             { key: "mine", label: "My Masters", icon: UserRound },
+            { key: "skills", label: "System Skills", icon: BookText },
           ] as { key: Tab; label: string; icon: typeof Sparkles }[]
         ).map(({ key, label, icon: Icon }) => (
           <button
@@ -164,6 +208,8 @@ export function MastersHub({ client }: { client: MastersClient }) {
 
       {tab === "explore" ? (
         <ExploreGallery templates={templates} onUse={useTemplate} />
+      ) : tab === "skills" ? (
+        <SkillsGallery skills={skills} onSync={syncFromCloud} onDelete={removeSkill} />
       ) : (
         <div className="flex-1 space-y-4 overflow-y-auto p-4 text-sm">
           <MasterForm
@@ -239,6 +285,62 @@ function ExploreGallery({
           <div className="mt-auto">
             <Button variant="secondary" size="sm" onClick={() => onUse(t)}>
               <Sparkles className="size-3.5" /> Use template
+            </Button>
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function SkillsGallery({
+  skills,
+  onSync,
+  onDelete,
+}: {
+  skills: SkillDto[] | null;
+  onSync: () => void;
+  onDelete: (slug: string) => void;
+}) {
+  if (!skills) return <div className="p-4 text-sm text-muted">Loading skills…</div>;
+  if (skills.length === 0)
+    return (
+      <div className="flex-1 space-y-3 p-4 text-sm text-muted">
+        <p>
+          No system skills yet. Click <b>Sync from cloud</b> to pull the public catalog.
+        </p>
+        <Button variant="secondary" size="sm" onClick={onSync}>
+          <RefreshCw className="size-3.5" /> Sync from cloud
+        </Button>
+      </div>
+    );
+  return (
+    <div className="grid flex-1 grid-cols-1 gap-3 overflow-y-auto p-4 md:grid-cols-2">
+      {skills.map((s) => (
+        <Card key={s.slug} className="flex flex-col gap-2 p-3">
+          <div className="flex items-center gap-2">
+            <BookText className="size-4 text-accent" />
+            <span className="font-medium text-text">{s.name}</span>
+            <Badge variant="neutral">system</Badge>
+          </div>
+          {s.summary && <div className="text-xs text-muted">{s.summary}</div>}
+          {s.tags && s.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {s.tags.map((t) => (
+                <Badge key={t} variant="tool">
+                  {t}
+                </Badge>
+              ))}
+            </div>
+          )}
+          <div className="mt-auto">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-danger"
+              onClick={() => onDelete(s.slug)}
+            >
+              <Trash2 className="size-3.5" /> Remove
             </Button>
           </div>
         </Card>

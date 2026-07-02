@@ -357,6 +357,22 @@ pub const MIGRATIONS: &[&str] = &[
         updated_at    INTEGER NOT NULL
     );
     "#,
+    // 0019 — Cloud catalog sync: standalone (global) skills, the skills analogue of `global_masters`
+    // (0018). System skills synced from the cloud catalog live independent of any project; the file
+    // `<data_home>/skills/<slug>.md` is the source of truth and this table indexes the listing
+    // metadata, keyed on `slug` alone (UNIQUE). Project skills (table `skills`) are untouched. No FTS
+    // here — global skills are managed/synced content, not agent-recalled during a project run.
+    r#"
+    CREATE TABLE global_skills (
+        id          TEXT PRIMARY KEY,
+        slug        TEXT NOT NULL UNIQUE,
+        name        TEXT NOT NULL,
+        summary     TEXT,
+        body        TEXT,
+        source_file TEXT NOT NULL,          -- skills/<slug>.md (under the data home)
+        updated_at  INTEGER NOT NULL
+    );
+    "#,
 ];
 
 /// Apply any pending migrations. Safe to call on every startup.
