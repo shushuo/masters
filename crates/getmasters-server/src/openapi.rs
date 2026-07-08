@@ -5,18 +5,18 @@ use utoipa::OpenApi;
 
 use getmasters_proto::{
     AddGrantRequest, AuditEntryDto, AvailableHarnessDto, BundleImportResult, CatalogDto,
-    CatalogStatusDto, ClientCommand,
-    ConfigCheckDto, ConfigCheckItem, ConnectorDto, CreateConnectorRequest, CreateProjectRequest,
-    CreateScheduleRequest, CreateSessionRequest, CreateTeamRequest, DeckDto, DefaultMasterDto,
-    DocumentDto, EmailSettingsDto, EmailSettingsUpdate, EnvironmentDto, ErrorDto, ExtensionDto,
-    FolderGrant, GroupPostRequest, GroupPostResult, HealthDto, KnowledgeStatusDto, MasterDto,
-    MasterRunResult, MasterSummaryDto, MemoryDto, MessageDto, ProjectDto, ProviderStateDto,
-    ProvidersDto, QuickChatRequest, RankedMasterDto, RecipeDto, RecipeParamDto, RecipeRunResult,
-    RecipeSummaryDto, RevertResult, RouteBriefRequest, RouteResultDto, RunMasterRequest,
-    RunRecipeRequest, RunTeamRequest, ScheduleDto, ScheduledRunDto, SecretUpdate,
-    SendMessageRequest, ServerEvent, SessionDto, SetConnectorEnabledRequest, SetExtensionRequest,
-    SetInstructionsRequest, SetScheduleRequest, SettingsDto, SettingsUpdate, SkillDto,
-    StudyPlanDto, TeamBundle, TeamDto, TeamRunResult, TeamSummaryDto,
+    CatalogStatusDto, ClientCommand, ConfigCheckDto, ConfigCheckItem, ConnectorDto,
+    CreateConnectorRequest, CreateProjectRequest, CreateScheduleRequest, CreateSessionRequest,
+    CreateTeamRequest, DeckDto, DefaultMasterDto, DocumentDto, EmailSettingsDto,
+    EmailSettingsUpdate, EnvironmentDto, ErrorDto, ExtensionDto, FolderGrant, GroupPostRequest,
+    GroupPostResult, HealthDto, KnowledgeStatusDto, MasterDto, MasterRunResult, MasterSummaryDto,
+    MemoryDto, MessageDto, ProjectDto, ProviderStateDto, ProvidersDto, QuickChatRequest,
+    RankedMasterDto, RecipeDto, RecipeParamDto, RecipeRunResult, RecipeSummaryDto, RevertResult,
+    RouteBriefRequest, RouteResultDto, RunMasterRequest, RunRecipeRequest, RunTeamRequest,
+    ScheduleDto, ScheduledRunDto, SecretUpdate, SendMessageRequest, ServerEvent, SessionDto,
+    SetConnectorEnabledRequest, SetExtensionRequest, SetInstructionsRequest, SetScheduleRequest,
+    SettingsDto, SettingsUpdate, SkillDto, StudyPlanDto, TeamBundle, TeamDto, TeamRunResult,
+    TeamSummaryDto,
 };
 
 #[derive(OpenApi)]

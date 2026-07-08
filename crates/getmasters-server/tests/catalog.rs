@@ -63,8 +63,15 @@ fn apply_installs_masters_and_skills_then_version_gates() {
     assert!(dir.join("skills/cite-sources.md").exists());
 
     // The synced skill round-trips its tags/body from the file.
-    let skill = state.global_skill_store().load("cite-sources").unwrap().unwrap();
-    assert_eq!(skill.tags, vec!["research".to_string(), "writing".to_string()]);
+    let skill = state
+        .global_skill_store()
+        .load("cite-sources")
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        skill.tags,
+        vec!["research".to_string(), "writing".to_string()]
+    );
 
     // Same version, not forced → no-op (still one of each, no duplicates).
     let again = catalog::apply_catalog(&state, catalog_json("v1"), false);
@@ -101,7 +108,11 @@ fn sync_does_not_clobber_a_user_authored_master() {
     catalog::apply_catalog(&state, catalog_json("v1"), true);
 
     // The user's master is preserved (origin + summary unchanged) — the catalog skipped it.
-    let after = state.global_master_store().load("researcher").unwrap().unwrap();
+    let after = state
+        .global_master_store()
+        .load("researcher")
+        .unwrap()
+        .unwrap();
     assert_eq!(after.origin, "imported");
     assert_eq!(after.summary, "MY custom researcher");
 
