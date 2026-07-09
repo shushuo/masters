@@ -84,6 +84,25 @@ async fn main() -> anyhow::Result<()> {
     // Fire scheduled recipes while the daemon is alive (FR-17; docs/02 §5).
     getmasters_server::scheduler::spawn(state.clone());
 
+    // Report a one-time anonymous install event (on by default, opt-out; docs/06). Spawned
+    // non-blocking so an unreachable backend never delays daemon readiness.
+    tokio::spawn(getmasters_server::install::report_install(
+        state.agent.store().clone(),
+        state.version.to_string(),
+    ));
+
+    // Best-effort sync of the public system masters + skills catalog from the cloud (opt-out via
+    // GETMASTERS_NO_CATALOG_SYNC). Non-blocking + version-gated; failures are logged and retried
+    // next launch or on a manual POST /catalog/sync.
+    if !getmasters_server::catalog::startup_sync_disabled() {
+        let sync_state = state.clone();
+        tokio::spawn(async move {
+            if let Err(e) = getmasters_server::catalog::sync_catalog(sync_state, false).await {
+                tracing::warn!("startup catalog sync failed: {e}");
+            }
+        });
+    }
+
     let app = build_app(state);
 
     // Loopback only, ephemeral port (docs/06 §3).

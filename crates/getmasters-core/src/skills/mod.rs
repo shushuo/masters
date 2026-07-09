@@ -116,59 +116,129 @@ pub fn parse(content: &str) -> Skill {
     }
 }
 
-/// File-backed skills for one project: owns the `skills/` dir and keeps the DB index in sync.
+/// Which tier a [`SkillStore`] serves. Same file format/parsing/slug in both — only the on-disk
+/// root and the DB index methods differ (mirrors `masters::MasterStore`'s scope).
+#[derive(Clone)]
+enum Scope {
+    /// Skills under a project data dir, indexed + FTS'd by `(project_id, slug)`.
+    Project(String),
+    /// Standalone skills under `<data_home>/skills/`, indexed in `global_skills` by slug (no FTS).
+    Global,
+}
+
+/// File-backed skills: owns a `skills/` dir and keeps the DB index in sync. Either project-scoped
+/// (`new`) or standalone/global (`global`, e.g. system skills synced from the cloud catalog).
 #[derive(Clone)]
 pub struct SkillStore {
-    project_dir: PathBuf,
-    project_id: String,
+    /// Root that contains the `skills/` subdir (a project data dir, or the data home for global).
+    base_dir: PathBuf,
+    scope: Scope,
     store: Store,
 }
 
 impl SkillStore {
     pub fn new(project_dir: PathBuf, project_id: impl Into<String>, store: Store) -> Self {
         Self {
-            project_dir,
-            project_id: project_id.into(),
+            base_dir: project_dir,
+            scope: Scope::Project(project_id.into()),
+            store,
+        }
+    }
+
+    /// A standalone (project-less) skills store rooted at `data_home` (files under
+    /// `<data_home>/skills/`, indexed in the `global_skills` table by slug).
+    pub fn global(data_home: PathBuf, store: Store) -> Self {
+        Self {
+            base_dir: data_home,
+            scope: Scope::Global,
             store,
         }
     }
 
     fn skills_dir(&self) -> PathBuf {
-        self.project_dir.join(SKILLS_DIR)
+        self.base_dir.join(SKILLS_DIR)
     }
 
-    /// Author (or overwrite) a skill: write `skills/<slug>.md` and upsert its index row.
+    /// Author (or overwrite) a skill from name/summary/steps (tags empty). Returns `(slug, file)`.
     pub fn create(&self, name: &str, summary: &str, steps: &str) -> Result<(String, String)> {
-        let slug = slugify(name);
         let skill = Skill {
             name: name.trim().to_string(),
             summary: summary.trim().to_string(),
             tags: Vec::new(),
             body: steps.trim().to_string(),
         };
-        let dir = self.skills_dir();
-        std::fs::create_dir_all(&dir)?;
+        let slug = self.create_skill(&skill)?;
         let file = format!("{SKILLS_DIR}/{slug}.md");
-        std::fs::write(dir.join(format!("{slug}.md")), render(&skill))?;
-        self.store.upsert_skill(
-            &self.project_id,
-            &slug,
-            &skill.name,
-            &skill.summary,
-            &skill.body,
-            &file,
-        )?;
         Ok((slug, file))
     }
 
-    /// FTS recall over the project's skills.
-    pub fn recall(&self, query: &str, k: usize) -> Result<Vec<SkillRow>> {
-        self.store.search_skills(&self.project_id, query, k)
+    /// Author (or overwrite) a skill from a full [`Skill`] (preserves `tags`); returns the slug.
+    /// Used by the cloud-catalog importer, which carries tags.
+    pub fn create_skill(&self, skill: &Skill) -> Result<String> {
+        let slug = slugify(&skill.name);
+        let dir = self.skills_dir();
+        std::fs::create_dir_all(&dir)?;
+        let file = format!("{SKILLS_DIR}/{slug}.md");
+        std::fs::write(dir.join(format!("{slug}.md")), render(skill))?;
+        match &self.scope {
+            Scope::Project(project_id) => {
+                self.store.upsert_skill(
+                    project_id,
+                    &slug,
+                    &skill.name,
+                    &skill.summary,
+                    &skill.body,
+                    &file,
+                )?;
+            }
+            Scope::Global => {
+                self.store.upsert_global_skill(
+                    &slug,
+                    &skill.name,
+                    &skill.summary,
+                    &skill.body,
+                    &file,
+                )?;
+            }
+        }
+        Ok(slug)
     }
 
-    /// All skills for the project.
+    /// Load a skill by slug (the file is the source of truth), or `None` if absent.
+    pub fn load(&self, slug: &str) -> Result<Option<Skill>> {
+        let slug = slugify(slug);
+        let path = self.skills_dir().join(format!("{slug}.md"));
+        if !path.exists() {
+            return Ok(None);
+        }
+        Ok(Some(parse(&std::fs::read_to_string(path)?)))
+    }
+
+    /// FTS recall over the project's skills. Global skills aren't FTS-indexed → empty.
+    pub fn recall(&self, query: &str, k: usize) -> Result<Vec<SkillRow>> {
+        match &self.scope {
+            Scope::Project(project_id) => self.store.search_skills(project_id, query, k),
+            Scope::Global => Ok(Vec::new()),
+        }
+    }
+
+    /// All skills in scope (index metadata, for listing).
     pub fn list(&self) -> Result<Vec<SkillRow>> {
-        self.store.list_skills(&self.project_id)
+        match &self.scope {
+            Scope::Project(project_id) => self.store.list_skills(project_id),
+            Scope::Global => self.store.list_global_skills(),
+        }
+    }
+
+    /// Delete a skill: remove its file and index row.
+    pub fn delete(&self, slug: &str) -> Result<()> {
+        let slug = slugify(slug);
+        let path = self.skills_dir().join(format!("{slug}.md"));
+        std::fs::remove_file(&path).ok();
+        match &self.scope {
+            Scope::Project(project_id) => self.store.delete_skill(project_id, &slug),
+            Scope::Global => self.store.delete_global_skill(&slug),
+        }
     }
 }
 
@@ -253,5 +323,40 @@ mod tests {
         assert_eq!(skills.list().unwrap().len(), 1);
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn global_store_writes_file_and_preserves_tags() {
+        let home = std::env::temp_dir().join(format!("getmasters-gskill-{}", uuid::Uuid::new_v4()));
+        let store = Store::open_in_memory().unwrap();
+        let skills = SkillStore::global(home.clone(), store.clone());
+
+        let skill = Skill {
+            name: "Cite Sources".into(),
+            summary: "Add citations to claims".into(),
+            tags: vec!["research".into(), "writing".into()],
+            body: "1. find source\n2. cite".into(),
+        };
+        let slug = skills.create_skill(&skill).unwrap();
+        assert_eq!(slug, "cite-sources");
+        // File lives under <data_home>/skills/, indexed in global_skills (not the project table).
+        assert!(home.join("skills/cite-sources.md").exists());
+        assert_eq!(store.list_global_skills().unwrap().len(), 1);
+        assert!(store.list_skills("any-project").unwrap().is_empty());
+
+        // Load round-trips tags + body (the file is the source of truth).
+        let loaded = skills.load("cite-sources").unwrap().unwrap();
+        assert_eq!(loaded, skill);
+
+        // Idempotent overwrite by slug.
+        skills.create("Cite Sources", "v2", "1. cite").unwrap();
+        assert_eq!(skills.list().unwrap().len(), 1);
+
+        // Delete removes both file and index row.
+        skills.delete("cite-sources").unwrap();
+        assert!(!home.join("skills/cite-sources.md").exists());
+        assert!(store.list_global_skills().unwrap().is_empty());
+
+        std::fs::remove_dir_all(&home).ok();
     }
 }

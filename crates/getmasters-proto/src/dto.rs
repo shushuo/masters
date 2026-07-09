@@ -147,12 +147,42 @@ pub struct MemoryDto {
     pub source: String,
 }
 
-/// One saved skill (name + summary), read-only for the UI.
+/// One saved skill. `tags`/`steps` carry the full definition for the cloud catalog + import; the
+/// read-only list endpoints leave them empty (both `#[serde(default)]`, backward-compatible).
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 pub struct SkillDto {
     pub slug: String,
     pub name: String,
     pub summary: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// The Markdown body (the steps).
+    #[serde(default)]
+    pub steps: String,
+}
+
+/// The cloud-hosted catalog of public **system** masters + skills the app syncs down.
+/// `version` is an opaque token (the cloud's max `updated_at`) the app stores to skip unchanged syncs.
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct CatalogDto {
+    pub version: String,
+    #[serde(default)]
+    pub masters: Vec<MasterDto>,
+    #[serde(default)]
+    pub skills: Vec<SkillDto>,
+}
+
+/// Result/state of a catalog sync: the last-synced version + time and how many entries are installed.
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct CatalogStatusDto {
+    /// The last successfully-synced catalog version, or null if never synced.
+    pub version: Option<String>,
+    /// ISO/epoch timestamp of the last successful sync, or null.
+    pub synced_at: Option<String>,
+    /// Count of installed global masters.
+    pub masters: u32,
+    /// Count of installed global skills.
+    pub skills: u32,
 }
 
 /// One flashcard deck with its review counts, read-only for the UI (Phase 3a, FR-13/14).
@@ -623,6 +653,9 @@ pub struct SettingsDto {
     pub anthropic_key_set: bool,
     /// Whether an OpenAI API key is configured (keychain or env).
     pub openai_key_set: bool,
+    /// Whether anonymous install telemetry is enabled (on by default; opt-out).
+    #[serde(default = "default_true")]
+    pub telemetry_enabled: bool,
 }
 
 /// The resolved runtime environment (the `hermes config` view analogue). Read-only; surfaces where
@@ -684,6 +717,9 @@ pub struct SettingsUpdate {
     /// Per-provider base-URL overrides keyed by catalog id; `""` clears an override.
     #[serde(default)]
     pub provider_bases: Option<HashMap<String, String>>,
+    /// Enable/disable anonymous install telemetry (opt-out; on by default).
+    #[serde(default)]
+    pub telemetry_enabled: Option<bool>,
 }
 
 /// One provider in the configurable catalog, with its current (non-secret) state.

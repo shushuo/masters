@@ -291,6 +291,24 @@ first run — so an installed app never writes to an unpredictable working dir. 
 first-run **Onboarding** (`ui/desktop/src/components/Onboarding.tsx`, gated on effective provider =
 `mock`) to set provider/key + an optional project & folder grant.
 
+**Install telemetry + auto-update (infra):** the daemon reports a **single anonymous install event**
+on first run — `getmasters_server::install::report_install` (spawned non-blocking from `main.rs`)
+generates a random per-data-home `install_id` (settings table, no migration), detects the platform
+(`os_type()`), and POSTs `{install_id, platform, os, app_version}` to `{base}/api/installs` (default
+`https://getmasters.app`, env `GETMASTERS_TELEMETRY_URL`). It's **once per install** (gated on
+`install_reported_at`, retried until 2xx) and **opt-out** (`GETMASTERS_NO_TELEMETRY` env or the
+`telemetry_enabled` setting, surfaced as a checkbox in Settings → Environment; docs/06). The cloud
+(`masters-cloud/apps/web`) receives it at `POST /api/installs` (Prisma + Postgres `InstallEvent`,
+upsert by `installId` so retries don't duplicate). **In-app auto-update** uses
+`tauri-plugin-updater` + `tauri-plugin-process` (`ui/desktop/src-tauri`, `plugins.updater` →
+`https://getmasters.app/api/update/{{target}}/{{arch}}/{{current_version}}`, `createUpdaterArtifacts`);
+the renderer checks on startup (`ui/desktop/src/lib/updater.ts`, App.tsx banner + Settings button) and
+downloads/verifies/installs a signed build, then relaunches. The cloud serves the Tauri dynamic
+manifest from the latest GitHub release (`apps/web/src/lib/update.ts` → `/api/update/...`), and CI
+(`desktop-build.yml`) signs updater artifacts via `TAURI_SIGNING_PRIVATE_KEY*` secrets and uploads
+`*.app.tar.gz`/`*-setup.exe`/`*.nsis.zip` + `.sig` to the release. The updater **pubkey** in
+`tauri.conf.json` is a placeholder until the keypair is generated (`tauri signer generate`).
+
 **Desktop UI layer** (post-bundle-only enhancement): a Notion/Manus-inspired **design system** —
 CSS-variable tokens with an OS-following **and** manually-pinned theme (`ui/desktop/src/index.css` +
 `src/lib/theme.ts`, a system/light/dark toggle in the `Sidebar`) and dependency-light shared
@@ -335,6 +353,23 @@ session+roster-generalized `GroupChat.tsx` (new optional `openSession`/`members`
 `backLabel` props; the Teams tab path is unchanged). Client methods: `listMasterTemplates`,
 `{list,get,create,delete}GlobalMaster`, `{get,set}DefaultMaster`, `startQuickChat` (bundle-only).
 
+**Cloud catalog sync (public system masters + skills):** system content is no longer baked into the
+binary — the desktop syncs a **cloud-hosted catalog** so it changes without an app release. **Skills
+gained the global tier masters got in 0018**: migration 0019 `global_skills`, a `Scope`/`SkillStore::global`
+(`skills/mod.rs`, files under `<data_home>/skills/`), `Store::{upsert,list,get,delete}_global_skill` +
+project `delete_skill`, `AppState::global_skill_store()`, and endpoints `GET /skills` + `GET/DELETE
+/skills/{slug}` (`routes/skills_global.rs`). `getmasters-server::catalog` fetches `GET
+{GETMASTERS_CATALOG_URL|getmasters.app}/api/catalog` (`CatalogDto { version, masters: [MasterDto], skills:
+[SkillDto] }`; `SkillDto` gained `#[serde(default)]` `tags`/`steps`) and `apply_catalog` installs masters via
+`from_dto` → `global_master_store().create()` (tagged `origin:"system"`, **skipping same-slug user masters**)
+and skills via `global_skill_store().create_skill()`; it's **version-gated** (settings `catalog_version`) and
+runs best-effort on startup (opt-out `GETMASTERS_NO_CATALOG_SYNC`) + `POST /catalog/sync` / `GET
+/catalog/status`. Desktop `MastersHub.tsx` gains a **Sync from cloud** button + a **System Skills** tab
+(`syncCatalog`/`getCatalogStatus`/`listGlobalSkills`/`deleteGlobalSkill`). The cloud
+(`masters-cloud/apps/web`) serves it from Prisma `SystemMaster`/`SystemSkill` tables (seeded via
+`prisma/seed.ts` from the former builtin gallery) at `GET /api/catalog` (`src/lib/catalog.ts`); the baked-in
+`GET /masters/templates` remains as an offline fallback.
+
 **Hardening pass** (post-sidebar; amends ADR-0014, extends ADR-0007/0008 seams): a cross-cutting
 robustness + i18n + foundations batch. **Core loop** — `RunLimits` (env-overridable `GETMASTERS_*`:
 max_tokens / tool iterations / tool + approval timeouts / transcript char budget / tool-result cap /
@@ -349,7 +384,7 @@ persists to `messages.token_usage` (`MessageDto.token_usage`); Anthropic request
 system + tool prefix; the event channel is bounded. **ToolExecutor trait** (`extensions`) — the loop's
 execution seam (`tool_schemas` + `execute`); `ExtensionManager` is the in-process impl,
 `with_executor` injects fakes/remote executors (the cloud "hands" upgrade path). **Session event log**
-(migration **0019** `events`) — append-only tool_call/tool_result/approval_requested/approval_decided/
+(migration **0020** `events`) — append-only tool_call/tool_result/approval_requested/approval_decided/
 complete/error rows from the loop + gate; `GET /sessions/{id}/events` (`EventDto`) — the
 managed-agents "session = durable event log" slice (resume/wake later). **Unicode/CJK** — `slugify`
 keeps Unicode letters; `masters::router::terms` emits CJK bigrams; mentions add a positional

@@ -7,9 +7,11 @@
 pub mod acp;
 pub mod auth;
 pub mod bundle;
+pub mod catalog;
 pub mod delivery;
 pub mod group;
 pub mod home;
+pub mod install;
 pub mod master;
 pub mod master_templates;
 pub mod openapi;
@@ -126,6 +128,15 @@ pub fn build_app(state: AppState) -> Router {
             "/masters/{slug}",
             get(routes::masters_global::get).delete(routes::masters_global::delete),
         )
+        // Standalone (global) skills — system skills synced from the cloud catalog.
+        .route("/skills", get(routes::skills_global::list))
+        .route(
+            "/skills/{slug}",
+            get(routes::skills_global::get).delete(routes::skills_global::delete),
+        )
+        // Cloud catalog sync (public system masters + skills → global stores).
+        .route("/catalog/sync", post(routes::catalog::sync))
+        .route("/catalog/status", get(routes::catalog::status))
         .route("/acp/harnesses", get(routes::acp::harnesses))
         .route(
             "/projects/{id}/connectors",

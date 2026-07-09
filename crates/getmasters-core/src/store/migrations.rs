@@ -357,7 +357,23 @@ pub const MIGRATIONS: &[&str] = &[
         updated_at    INTEGER NOT NULL
     );
     "#,
-    // 0019 — session event log (the managed-agents "session = durable event log" slice): an
+    // 0019 — Cloud catalog sync: standalone (global) skills, the skills analogue of `global_masters`
+    // (0018). System skills synced from the cloud catalog live independent of any project; the file
+    // `<data_home>/skills/<slug>.md` is the source of truth and this table indexes the listing
+    // metadata, keyed on `slug` alone (UNIQUE). Project skills (table `skills`) are untouched. No FTS
+    // here — global skills are managed/synced content, not agent-recalled during a project run.
+    r#"
+    CREATE TABLE global_skills (
+        id          TEXT PRIMARY KEY,
+        slug        TEXT NOT NULL UNIQUE,
+        name        TEXT NOT NULL,
+        summary     TEXT,
+        body        TEXT,
+        source_file TEXT NOT NULL,          -- skills/<slug>.md (under the data home)
+        updated_at  INTEGER NOT NULL
+    );
+    "#,
+    // 0020 — session event log (the managed-agents "session = durable event log" slice): an
     // append-only record of a run's activity beyond the message transcript — tool calls/results,
     // approval requests + decisions, completion/errors. Written best-effort by the agent loop and
     // the permission gate; read via GET /sessions/{id}/events. Turn resume/wake builds on this

@@ -61,6 +61,8 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 anyhow.workspace = true
 agent-client-protocol = "1.0.0"
+# Outbound HTTPS for the anonymous install-event report (rustls; matches the providers' client).
+reqwest = { workspace = true, features = ["json"] }
 
 [dev-dependencies]
 # Enable the `testing` feature so the offline MockProvider fake is available to the integration

@@ -150,6 +150,8 @@ pub async fn list_skills(
             slug: s.slug,
             name: s.name,
             summary: s.summary,
+            tags: Vec::new(),
+            steps: String::new(),
         })
         .collect();
     Ok(Json(skills))
