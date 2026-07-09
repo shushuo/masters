@@ -2,6 +2,7 @@
 
 pub mod acp;
 pub mod bundles;
+pub mod catalog;
 pub mod connectors;
 pub mod group;
 pub mod health;
@@ -13,6 +14,7 @@ pub mod recipes;
 pub mod schedules;
 pub mod sessions;
 pub mod settings;
+pub mod skills_global;
 pub mod teams;
 pub mod ws;
 

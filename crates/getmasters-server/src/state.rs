@@ -180,6 +180,13 @@ impl AppState {
         getmasters_core::masters::MasterStore::global(self.data_base(), self.agent.store().clone())
     }
 
+    /// The standalone (project-less) skills store, rooted at `{db_parent}/skills/`. System skills
+    /// synced from the cloud catalog live here, independent of any project (mirrors
+    /// [`Self::global_master_store`]).
+    pub fn global_skill_store(&self) -> getmasters_core::skills::SkillStore {
+        getmasters_core::skills::SkillStore::global(self.data_base(), self.agent.store().clone())
+    }
+
     /// The system **default project** that backs quick chat — masters need an agent/grant/tool
     /// context to run, which lives on a project. Returns the persisted default project id, lazily
     /// creating a "Default" project the first time it's needed and saving its id in `settings`.

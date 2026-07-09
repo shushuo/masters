@@ -8,6 +8,7 @@ import { ProjectDetail } from "./components/ProjectDetail";
 import { MastersHub } from "./components/MastersHub";
 import { Onboarding } from "./components/Onboarding";
 import { Sidebar } from "./components/Sidebar";
+import { checkForUpdate, installUpdate, type Update } from "./lib/updater";
 
 type View = "chat" | "settings" | "projects" | "masters";
 
@@ -21,6 +22,10 @@ export function App() {
   const [collapsed, setCollapsed] = useState(false);
   // Lets the user re-launch the setup wizard from Settings (not just on first run).
   const [forceOnboarding, setForceOnboarding] = useState(false);
+  // A pending in-app update (Tauri only); surfaced as a dismissible banner.
+  const [update, setUpdate] = useState<Update | null>(null);
+  const [updating, setUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   // The daemon starts even without a usable provider (reporting `configured: false`); in that
   // state we auto-open the setup wizard so the user can add a provider key. Settings ("Re-run
@@ -57,6 +62,29 @@ export function App() {
     };
   }, []);
 
+  // Check for a newer release once at startup (no-op outside the Tauri shell).
+  useEffect(() => {
+    let cancelled = false;
+    checkForUpdate()
+      .then((u) => !cancelled && setUpdate(u))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function applyUpdate() {
+    if (!update) return;
+    setUpdating(true);
+    setUpdateError(null);
+    try {
+      await installUpdate(update);
+    } catch (e) {
+      setUpdateError(String(e));
+      setUpdating(false);
+    }
+  }
+
   return (
     <div className="flex h-full bg-bg text-text">
       <Sidebar
@@ -73,6 +101,28 @@ export function App() {
       />
 
       <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+        {update && (
+          <div className="flex flex-wrap items-center gap-3 border-b border-border bg-bg-subtle px-4 py-2 text-sm text-text">
+            <span>
+              A new version <span className="font-medium">v{update.version}</span> is available.
+            </span>
+            <button
+              className="rounded bg-accent px-2 py-1 text-xs font-medium text-accent-fg disabled:opacity-60"
+              onClick={applyUpdate}
+              disabled={updating}
+            >
+              {updating ? "Updating…" : "Update & restart"}
+            </button>
+            <button
+              className="text-xs text-muted hover:text-text"
+              onClick={() => setUpdate(null)}
+              disabled={updating}
+            >
+              Later
+            </button>
+            {updateError && <span className="text-xs text-danger-fg">{updateError}</span>}
+          </div>
+        )}
         {error ? (
           <div className="m-4 rounded border border-danger bg-danger-bg p-3 text-sm text-danger-fg">
             {error}

@@ -30,6 +30,7 @@ export type MasterSummaryDto = components["schemas"]["MasterSummaryDto"];
 export type MasterRunResult = components["schemas"]["MasterRunResult"];
 export type DefaultMasterDto = components["schemas"]["DefaultMasterDto"];
 export type AvailableHarnessDto = components["schemas"]["AvailableHarnessDto"];
+export type CatalogStatusDto = components["schemas"]["CatalogStatusDto"];
 export type TeamDto = components["schemas"]["TeamDto"];
 export type TeamSummaryDto = components["schemas"]["TeamSummaryDto"];
 export type TeamBundle = components["schemas"]["TeamBundle"];
@@ -467,6 +468,40 @@ export class MastersClient {
     });
     if (!res.ok) throw new Error(`startQuickChat failed: ${res.status}`);
     return res.json();
+  }
+
+  // --- Cloud catalog (public system masters + skills) + global skills --------
+
+  /** Force a sync of the public system masters + skills catalog from the cloud. */
+  async syncCatalog(): Promise<CatalogStatusDto> {
+    const res = await fetch(`${this.base()}/catalog/sync`, {
+      method: "POST",
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`syncCatalog failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** Last-synced catalog version/time + installed counts. */
+  async getCatalogStatus(): Promise<CatalogStatusDto> {
+    const res = await fetch(`${this.base()}/catalog/status`, { headers: this.headers() });
+    if (!res.ok) throw new Error(`getCatalogStatus failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** The standalone (system) skills synced from the cloud catalog. */
+  async listGlobalSkills(): Promise<SkillDto[]> {
+    const res = await fetch(`${this.base()}/skills`, { headers: this.headers() });
+    if (!res.ok) throw new Error(`listGlobalSkills failed: ${res.status}`);
+    return res.json();
+  }
+
+  async deleteGlobalSkill(slug: string): Promise<void> {
+    const res = await fetch(`${this.base()}/skills/${slug}`, {
+      method: "DELETE",
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`deleteGlobalSkill failed: ${res.status}`);
   }
 
   /** A project's master teams (listing metadata; Phase 4b). */

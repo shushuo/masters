@@ -90,6 +90,12 @@ jobs:
 
       - name: Tauri build
         working-directory: ui/desktop
+        # The updater signing key (generated once via `tauri signer generate`) signs the updater
+        # artifacts so the cloud manifest endpoint can serve verifiable `.sig` signatures. Absent
+        # secrets just skip updater signing (the installers still build).
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri build
 
       - name: Stage artifacts
@@ -97,8 +103,12 @@ jobs:
         run: |
           BUNDLE="$TAURI_DIR/src-tauri/target/release/bundle"
           mkdir -p dist-installers
+          # Installers for the download page, plus the updater artifacts (+ their detached `.sig`
+          # signatures) the cloud /api/update manifest resolves: macOS `*.app.tar.gz`, Windows
+          # `*-setup.exe`/`*.nsis.zip`.
           find "$BUNDLE" -type f \
-            \( -name "*.dmg" -o -name "*.msi" -o -name "*-setup.exe" \) \
+            \( -name "*.dmg" -o -name "*.msi" -o -name "*-setup.exe" \
+               -o -name "*.app.tar.gz" -o -name "*.nsis.zip" -o -name "*.sig" \) \
             -exec cp {} dist-installers/ \;
           ls -la dist-installers
 
