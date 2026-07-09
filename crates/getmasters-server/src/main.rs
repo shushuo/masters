@@ -59,6 +59,20 @@ async fn main() -> anyhow::Result<()> {
     };
     tracing::info!(provider = provider.name(), model = %cfg.model, db = ?db_path, "starting getmastersd");
 
+    // GC orphaned group-chat scratch sessions (title `group:<gid>:<slug>`): normal dispatches
+    // delete their own scratch; anything left over is from a crashed/aborted run.
+    if let Ok(orphans) = store.session_ids_titled_like("group:%:%") {
+        for id in &orphans {
+            let _ = store.delete_session(id);
+        }
+        if !orphans.is_empty() {
+            tracing::info!(
+                count = orphans.len(),
+                "swept orphaned group scratch sessions"
+            );
+        }
+    }
+
     let agent = AgentService::new(store, provider, cfg.model.clone())
         .with_limits(getmasters_core::agent::RunLimits::from_env())
         .with_approval_registry(Arc::new(ApprovalRegistry::new()));

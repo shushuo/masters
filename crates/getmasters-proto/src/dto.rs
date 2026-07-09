@@ -446,6 +446,14 @@ pub struct GroupPostRequest {
     pub max_rounds: Option<u32>,
 }
 
+/// One master's failure within a group round (the other masters' replies still return).
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct GroupMasterErrorDto {
+    /// The failing master's slug.
+    pub author: String,
+    pub message: String,
+}
+
 /// Result of a group post: the masters addressed in the **first** round + every round's attributed
 /// replies in order (Phase 4f: a post may run several mention-driven rounds).
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
@@ -454,6 +462,10 @@ pub struct GroupPostResult {
     pub addressed: Vec<String>,
     /// Each round's attributed replies, posted into the group session, in round-then-addressed order.
     pub replies: Vec<MessageDto>,
+    /// Masters that failed (per round, in dispatch order). A partial round still returns the
+    /// successful replies instead of failing the whole post.
+    #[serde(default)]
+    pub errors: Vec<GroupMasterErrorDto>,
 }
 
 /// An external MCP server connector for a project (Phase 4d, FR-20; ADR-0005).

@@ -395,6 +395,27 @@ impl Store {
         Ok(rows)
     }
 
+    /// Delete a session with its messages and events (group scratch cleanup, Phase 4c/4f).
+    /// Audit rows are deliberately kept — they are the durable record of gated tool calls.
+    pub fn delete_session(&self, id: &str) -> Result<()> {
+        let conn = self.lock();
+        conn.execute("DELETE FROM messages WHERE session_id = ?1", [id])?;
+        conn.execute("DELETE FROM events WHERE session_id = ?1", [id])?;
+        conn.execute("DELETE FROM sessions WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    /// Session ids whose title matches a SQL `LIKE` pattern — used by the daemon's startup GC
+    /// of orphaned group scratch sessions (`group:%:%`).
+    pub fn session_ids_titled_like(&self, pattern: &str) -> Result<Vec<String>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare("SELECT id FROM sessions WHERE title LIKE ?1")?;
+        let rows = stmt
+            .query_map([pattern], |r| r.get(0))?
+            .collect::<rusqlite::Result<Vec<String>>>()?;
+        Ok(rows)
+    }
+
     // --- Messages -----------------------------------------------------------
 
     /// Persist a message and return it. `role` is `"user" | "assistant" | "tool"`. The author

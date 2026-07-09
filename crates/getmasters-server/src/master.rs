@@ -58,7 +58,9 @@ pub fn load_master_any(
 
 /// Backend-agnostic dispatch: run a turn for `master` in `session_id`, attributed to `author`,
 /// returning its `AgentEvent` stream. `brief = Some` seeds a user turn; `None` answers the session's
-/// existing transcript (group chat). Internal masters go through [`AgentService`]; ACP masters go
+/// existing transcript (group chat). `participants` is the group-chat roster `(slug, name)`
+/// (empty outside group chat) — injected so the master knows its teammates and can hand off with
+/// `@slug` mentions (Phase 4f). Internal masters go through [`AgentService`]; ACP masters go
 /// through the [`crate::acp`] driver — callers consume the boxed stream identically.
 pub async fn run_master_stream(
     state: &AppState,
@@ -67,6 +69,7 @@ pub async fn run_master_stream(
     author: &str,
     master: &Master,
     brief: Option<&str>,
+    participants: &[(String, String)],
 ) -> Result<Pin<Box<dyn Stream<Item = AgentEvent> + Send>>, String> {
     if master.is_acp() {
         let launch = master
@@ -80,10 +83,22 @@ pub async fn run_master_stream(
                 .map_err(|e| e.to_string())?,
         ));
         // The ACP agent needs an explicit prompt: the brief, else the last user message posted.
-        let prompt = match brief {
+        let mut prompt = match brief {
             Some(b) => b.to_string(),
             None => last_user_text(&store, session_id),
         };
+        // Group chat: the harness has no system-prompt seam, so the roster rides in the prompt.
+        if !participants.is_empty() {
+            let list = participants
+                .iter()
+                .map(|(slug, name)| format!("- @{slug} ({name})"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            prompt = format!(
+                "{prompt}\n\nYou are @{author} in a group chat. Teammates you can hand work to \
+                 by mentioning @<slug> in your reply:\n{list}"
+            );
+        }
         let ctx = AcpRunContext {
             cwd: acp_cwd(state, project_id, &grants),
             store,
@@ -113,6 +128,9 @@ pub async fn run_master_stream(
         .with_model_provider(provider, model)
         .with_persona(master.persona_block())
         .with_author(author);
+    if !participants.is_empty() {
+        agent = agent.with_participants(participants.to_vec());
+    }
     if !master.allowed_tools.is_empty() {
         agent = agent.with_enabled_tools(master.allowed_tools.iter().cloned().collect());
     }
@@ -178,8 +196,16 @@ pub async fn run(
         .create_session(Some(project_id), Some(&format!("master:{slug}")))
         .map_err(|e| e.to_string())?;
 
-    let stream =
-        run_master_stream(state, project_id, &session.id, slug, &master, Some(brief)).await?;
+    let stream = run_master_stream(
+        state,
+        project_id,
+        &session.id,
+        slug,
+        &master,
+        Some(brief),
+        &[],
+    )
+    .await?;
     let message = drain_to_message(&store, stream).await?;
     Ok(MasterRunResult {
         session_id: session.id,
