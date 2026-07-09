@@ -11,7 +11,8 @@
 use agent_client_protocol::schema::v1::{
     AgentCapabilities, ContentBlock, ContentChunk, InitializeRequest, InitializeResponse,
     NewSessionRequest, NewSessionResponse, PromptRequest, PromptResponse, SessionId,
-    SessionNotification, SessionUpdate, StopReason, TextContent, WriteTextFileRequest,
+    SessionNotification, SessionUpdate, StopReason, TextContent, ToolCall, ToolCallStatus,
+    ToolCallUpdate, ToolCallUpdateFields, WriteTextFileRequest,
 };
 use agent_client_protocol::{Agent, Client, ConnectionTo, Dispatch, Result, Stdio};
 
@@ -51,6 +52,22 @@ async fn main() -> Result<()> {
                     .join(" ");
                 let greeting = std::env::var("GREETING").unwrap_or_default();
                 let reply = format!("echo: {prompt_text} GREETING={greeting}");
+
+                // Surface one tool call + its completion (exercises the client's Phase 4g
+                // tool-visibility mapping for ACP masters).
+                connection.send_notification(SessionNotification::new(
+                    session_id.clone(),
+                    SessionUpdate::ToolCall(ToolCall::new("fix-1", "probe the workspace")),
+                ))?;
+                connection.send_notification(SessionNotification::new(
+                    session_id.clone(),
+                    SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
+                        "fix-1",
+                        ToolCallUpdateFields::new()
+                            .status(ToolCallStatus::Completed)
+                            .title("probe done".to_string()),
+                    )),
+                ))?;
 
                 connection.send_notification(SessionNotification::new(
                     session_id.clone(),

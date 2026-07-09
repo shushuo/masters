@@ -66,5 +66,29 @@ it does not reverse them. Masters still owns the human-in-the-loop boundary for 
   crate is young (API churn risk — isolated to `acp/driver.rs`/`acp/client.rs`).
 - **Deferred:** remote ACP transports (HTTP/WebSocket) + OAuth `authenticate`; the full callback surface
   (terminals, plans/modes, slash commands); the harness's own MCP servers + gating its internal toolset;
-  interactive (non-headless) approval for ACP single-runs; resumable ACP sessions; full transcript replay
-  into the ACP prompt. Lands as roadmap **Phase 4i** ([08](../08-roadmap.md)).
+  interactive (non-headless) approval for ACP single-runs; resumable ACP sessions. Lands as roadmap
+  **Phase 4i** ([08](../08-roadmap.md)).
+
+## Amendment (hardening pass)
+
+Three refinements landed after 4i, tightening the gate boundary this ADR defines:
+
+1. **`session/request_permission` is now genuinely gated.** The original slice classified the whole
+   request as one opaque Write and, under headless auto-approval, allowed it by selecting the *first*
+   offered option (which may be an "always allow"). Now a **located** tool call (the request carries
+   `locations`) is checked **per path** against the folder grants — `files.read` for read kinds,
+   `files.create` for edit/delete/move — so an out-of-grant operation is **denied + audited** even
+   headless; un-located calls (execute/fetch/other) authorize as `acp.<kind>` (Write-classified,
+   audited). The reply picks the option matching the verdict: allow → *allow-once* (never a silent
+   "always" escalation), deny → *reject-once*.
+2. **Scope of the guarantee, stated precisely:** the grant boundary covers operations the harness
+   routes through ACP callbacks (`fs/read_text_file`, `fs/write_text_file`,
+   `session/request_permission`). A harness that executes its own tools *without* asking (e.g. a
+   permissive permission mode) acts outside the gate — constraining that surface belongs to the
+   harness's own configuration (e.g. Claude Code's permission mode / allowed-tools flags in the
+   master's `acp_args`), and OS-level sandboxing remains future work.
+3. **Operational bounds + visibility:** an ACP run is bounded by `GETMASTERS_ACP_TIMEOUT_SECS`
+   (default 600s; a wedged harness becomes a turn error), the harness's `session/update` tool
+   activity maps onto `ToolCallStarted`/`ToolResult` events (Phase 4g visibility now covers ACP
+   masters) and the durable session event log, and group answer turns hand the harness the
+   **speaker-labelled transcript** (closing the "full transcript replay" deferral above).
