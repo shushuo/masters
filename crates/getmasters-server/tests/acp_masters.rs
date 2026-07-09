@@ -84,6 +84,17 @@ async fn acp_master_round_trips_and_passes_configured_env() {
     // The reply is attributed to the master, not the bare role.
     assert_eq!(result.message.author, slug);
 
+    // The fixture's tool call + completion were mapped into the durable event log (Phase 4g
+    // visibility for ACP masters).
+    let kinds: Vec<String> = store
+        .list_events(&result.session_id)
+        .unwrap()
+        .into_iter()
+        .map(|e| e.kind)
+        .collect();
+    assert!(kinds.contains(&"tool_call".to_string()), "{kinds:?}");
+    assert!(kinds.contains(&"tool_result".to_string()), "{kinds:?}");
+
     std::fs::remove_dir_all(&dir).ok();
 }
 

@@ -58,7 +58,9 @@ pub fn load_master_any(
 
 /// Backend-agnostic dispatch: run a turn for `master` in `session_id`, attributed to `author`,
 /// returning its `AgentEvent` stream. `brief = Some` seeds a user turn; `None` answers the session's
-/// existing transcript (group chat). Internal masters go through [`AgentService`]; ACP masters go
+/// existing transcript (group chat). `participants` is the group-chat roster `(slug, name)`
+/// (empty outside group chat) — injected so the master knows its teammates and can hand off with
+/// `@slug` mentions (Phase 4f). Internal masters go through [`AgentService`]; ACP masters go
 /// through the [`crate::acp`] driver — callers consume the boxed stream identically.
 pub async fn run_master_stream(
     state: &AppState,
@@ -67,6 +69,7 @@ pub async fn run_master_stream(
     author: &str,
     master: &Master,
     brief: Option<&str>,
+    participants: &[(String, String)],
 ) -> Result<Pin<Box<dyn Stream<Item = AgentEvent> + Send>>, String> {
     if master.is_acp() {
         let launch = master
@@ -79,11 +82,25 @@ pub async fn run_master_stream(
                 .list_folder_grants(Some(project_id))
                 .map_err(|e| e.to_string())?,
         ));
-        // The ACP agent needs an explicit prompt: the brief, else the last user message posted.
-        let prompt = match brief {
+        // The ACP agent needs an explicit prompt: the brief, else the whole session transcript
+        // rendered speaker-labelled (a group answer turn must see the conversation, not just the
+        // last user line — the internal path gets this via load_transcript, the harness can't).
+        let mut prompt = match brief {
             Some(b) => b.to_string(),
-            None => last_user_text(&store, session_id),
+            None => render_transcript_prompt(&store, session_id, author, 12_000),
         };
+        // Group chat: the harness has no system-prompt seam, so the roster rides in the prompt.
+        if !participants.is_empty() {
+            let list = participants
+                .iter()
+                .map(|(slug, name)| format!("- @{slug} ({name})"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            prompt = format!(
+                "{prompt}\n\nYou are @{author} in a group chat. Teammates you can hand work to \
+                 by mentioning @<slug> in your reply:\n{list}"
+            );
+        }
         let ctx = AcpRunContext {
             cwd: acp_cwd(state, project_id, &grants),
             store,
@@ -113,6 +130,9 @@ pub async fn run_master_stream(
         .with_model_provider(provider, model)
         .with_persona(master.persona_block())
         .with_author(author);
+    if !participants.is_empty() {
+        agent = agent.with_participants(participants.to_vec());
+    }
     if !master.allowed_tools.is_empty() {
         agent = agent.with_enabled_tools(master.allowed_tools.iter().cloned().collect());
     }
@@ -132,18 +152,46 @@ fn acp_cwd(state: &AppState, project_id: &str, grants: &GrantSet) -> PathBuf {
         .unwrap_or_else(|| state.project_dir(project_id))
 }
 
-/// The most recent user message text in a session (the ACP prompt for a group answer turn).
-fn last_user_text(store: &Store, session_id: &str) -> String {
-    store
-        .list_messages(session_id)
-        .ok()
-        .and_then(|msgs| {
-            msgs.into_iter()
-                .rev()
-                .find(|m| m.role == "user")
-                .map(|m| m.content)
-        })
-        .unwrap_or_default()
+/// Render a session transcript as a speaker-labelled prompt for an ACP master (group answer
+/// turns): `[author] text` per line, oldest lines dropped first over `cap_chars`, closed with a
+/// reply instruction. Tool rows (scratch-internal JSON) are skipped; assistant rows stored as
+/// content blocks render their text blocks only.
+fn render_transcript_prompt(
+    store: &Store,
+    session_id: &str,
+    author: &str,
+    cap_chars: usize,
+) -> String {
+    let msgs = store.list_messages(session_id).unwrap_or_default();
+    let mut lines: Vec<String> = msgs
+        .iter()
+        .filter(|m| m.role != "tool")
+        .map(|m| format!("[{}] {}", m.author, message_text(&m.content)))
+        .collect();
+    let mut total: usize = lines.iter().map(String::len).sum();
+    while lines.len() > 1 && total > cap_chars {
+        total -= lines.remove(0).len();
+    }
+    format!(
+        "The group conversation so far:\n{}\n\nYou are @{author}. Reply to the conversation \
+         above from your role's perspective.",
+        lines.join("\n")
+    )
+}
+
+/// Plain text of a stored message: content-block JSON renders its Text blocks, else verbatim.
+fn message_text(content: &str) -> String {
+    match serde_json::from_str::<Vec<getmasters_core::provider::ContentBlock>>(content) {
+        Ok(blocks) => blocks
+            .into_iter()
+            .filter_map(|b| match b {
+                getmasters_core::provider::ContentBlock::Text { text } => Some(text),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+        Err(_) => content.to_string(),
+    }
 }
 
 /// Drain a master's event stream to its final attributed reply (the `complete_turn` equivalent).
@@ -178,8 +226,16 @@ pub async fn run(
         .create_session(Some(project_id), Some(&format!("master:{slug}")))
         .map_err(|e| e.to_string())?;
 
-    let stream =
-        run_master_stream(state, project_id, &session.id, slug, &master, Some(brief)).await?;
+    let stream = run_master_stream(
+        state,
+        project_id,
+        &session.id,
+        slug,
+        &master,
+        Some(brief),
+        &[],
+    )
+    .await?;
     let message = drain_to_message(&store, stream).await?;
     Ok(MasterRunResult {
         session_id: session.id,

@@ -20,7 +20,7 @@ use tokio::task::AbortHandle;
 use getmasters_core::agent::AgentEvent;
 use getmasters_core::masters::mentions;
 use getmasters_core::masters::Master;
-use getmasters_proto::{GroupPostResult, MessageDto};
+use getmasters_proto::{GroupMasterErrorDto, GroupPostResult, MessageDto};
 
 use crate::master::{load_master_any, run_master_stream};
 use crate::state::AppState;
@@ -176,12 +176,13 @@ pub async fn post(
     let first_addressed = setup.addressed.clone();
 
     let mut all_replies: Vec<MessageDto> = Vec::new();
+    let mut all_errors: Vec<GroupMasterErrorDto> = Vec::new();
     let mut addressed = setup.addressed;
     for _round in 0..cap {
         if addressed.is_empty() {
             break;
         }
-        let replies = run_round(
+        let (replies, errors) = run_round(
             state,
             session_id,
             &setup.project_id,
@@ -191,11 +192,13 @@ pub async fn post(
         .await?;
         addressed = resolve_followups(&replies, &setup.participants);
         all_replies.extend(replies);
+        all_errors.extend(errors);
     }
 
     Ok(GroupPostResult {
         addressed: first_addressed,
         replies: all_replies,
+        errors: all_errors,
     })
 }
 
@@ -207,12 +210,16 @@ async fn run_round(
     project_id: &str,
     members: &[(String, Master)],
     addressed: &[String],
-) -> Result<Vec<MessageDto>, String> {
+) -> Result<(Vec<MessageDto>, Vec<GroupMasterErrorDto>), String> {
     let snapshot = state
         .agent
         .store()
         .list_messages(session_id)
         .map_err(|e| e.to_string())?;
+    let roster: Vec<(String, String)> = members
+        .iter()
+        .map(|(slug, e)| (slug.clone(), e.name.clone()))
+        .collect();
 
     let mut handles = Vec::new();
     for slug in addressed {
@@ -225,20 +232,44 @@ async fn run_round(
         let slug = slug.clone();
         let master = master.clone();
         let snapshot = snapshot.clone();
-        handles.push(tokio::spawn(async move {
-            dispatch_master(&state, &project_id, &session_id, &slug, &master, &snapshot).await
-        }));
+        // Teammates from this master's perspective: everyone else on the roster.
+        let teammates: Vec<(String, String)> =
+            roster.iter().filter(|(s, _)| s != &slug).cloned().collect();
+        handles.push((
+            slug.clone(),
+            tokio::spawn(async move {
+                dispatch_master(
+                    &state,
+                    &project_id,
+                    &session_id,
+                    &slug,
+                    &master,
+                    &snapshot,
+                    &teammates,
+                )
+                .await
+            }),
+        ));
     }
 
+    // A failing master no longer sinks the round: collect the successes + per-master errors
+    // (matching the streaming path's non-terminal MasterError semantics).
     let mut replies: Vec<MessageDto> = Vec::new();
-    for handle in handles {
+    let mut errors: Vec<GroupMasterErrorDto> = Vec::new();
+    for (slug, handle) in handles {
         match handle.await {
             Ok(Ok(reply)) => replies.push(reply),
-            Ok(Err(e)) => return Err(e),
-            Err(e) => return Err(format!("dispatch task failed: {e}")),
+            Ok(Err(e)) => errors.push(GroupMasterErrorDto {
+                author: slug,
+                message: e,
+            }),
+            Err(e) => errors.push(GroupMasterErrorDto {
+                author: slug,
+                message: format!("dispatch task failed: {e}"),
+            }),
         }
     }
-    Ok(replies)
+    Ok((replies, errors))
 }
 
 /// Run one master to completion and post its final reply into the group session (synchronous path).
@@ -249,11 +280,22 @@ async fn dispatch_master(
     slug: &str,
     master: &Master,
     snapshot: &[MessageDto],
+    teammates: &[(String, String)],
 ) -> Result<MessageDto, String> {
     let scratch_id = make_scratch(state, project_id, group_session_id, slug, snapshot).await?;
-    let mut stream = run_master_stream(state, project_id, &scratch_id, slug, master, None).await?;
+    let mut stream = run_master_stream(
+        state,
+        project_id,
+        &scratch_id,
+        slug,
+        master,
+        None,
+        teammates,
+    )
+    .await?;
     let store = state.agent.store();
     let mut posted: Option<MessageDto> = None;
+    let mut failure: Option<String> = None;
     while let Some(ev) = stream.next().await {
         match ev {
             AgentEvent::Complete { message_id } => {
@@ -271,11 +313,27 @@ async fn dispatch_master(
                     );
                 }
             }
-            AgentEvent::Error(e) => return Err(e),
+            AgentEvent::Error(e) => {
+                failure = Some(e);
+                break;
+            }
             _ => {}
         }
     }
+    // The reply (or error) is back in the group transcript — the scratch has served its purpose.
+    drop_scratch(state, &scratch_id);
+    if let Some(e) = failure {
+        return Err(e);
+    }
     posted.ok_or_else(|| format!("master '{slug}' produced no reply"))
+}
+
+/// Delete a finished scratch session (messages + events; audit rows are kept). Best-effort —
+/// a failed delete only leaves a row the startup GC sweeps later.
+fn drop_scratch(state: &AppState, scratch_id: &str) {
+    if let Err(e) = state.agent.store().delete_session(scratch_id) {
+        tracing::debug!(error = %e, scratch = %scratch_id, "failed to delete group scratch session");
+    }
 }
 
 /// An item on the live group stream: a round boundary, or one master's event within a round.
@@ -376,6 +434,12 @@ async fn run_rounds_streaming(
             let master = master.clone();
             let snapshot = snapshot.clone();
             let tx = tx.clone();
+            // Teammates from this master's perspective: everyone else on the roster.
+            let teammates: Vec<(String, String)> = participants
+                .iter()
+                .filter(|(s, _)| s != &slug)
+                .cloned()
+                .collect();
             let handle = tokio::spawn(async move {
                 stream_master(
                     &state,
@@ -384,6 +448,7 @@ async fn run_rounds_streaming(
                     &slug,
                     &master,
                     &snapshot,
+                    &teammates,
                     round,
                     tx,
                 )
@@ -415,6 +480,7 @@ async fn stream_master(
     slug: &str,
     master: &Master,
     snapshot: &[MessageDto],
+    teammates: &[(String, String)],
     round: u32,
     tx: UnboundedSender<GroupStreamEvent>,
 ) -> Option<MessageDto> {
@@ -435,14 +501,24 @@ async fn stream_master(
     };
 
     let store = state.agent.store();
-    let mut stream =
-        match run_master_stream(state, project_id, &scratch_id, slug, master, None).await {
-            Ok(s) => s,
-            Err(e) => {
-                send(AgentEvent::Error(e));
-                return None;
-            }
-        };
+    let mut stream = match run_master_stream(
+        state,
+        project_id,
+        &scratch_id,
+        slug,
+        master,
+        None,
+        teammates,
+    )
+    .await
+    {
+        Ok(s) => s,
+        Err(e) => {
+            send(AgentEvent::Error(e));
+            drop_scratch(state, &scratch_id);
+            return None;
+        }
+    };
     let mut posted: Option<MessageDto> = None;
     while let Some(ev) = stream.next().await {
         match ev {
@@ -470,5 +546,6 @@ async fn stream_master(
             other => send(other),
         }
     }
+    drop_scratch(state, &scratch_id);
     posted
 }

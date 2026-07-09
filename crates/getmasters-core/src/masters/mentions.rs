@@ -17,24 +17,43 @@ pub fn resolve(text: &str, participants: &[(String, String)], coordinator: &str)
     let tokens = mention_tokens(text);
 
     // `@all` / `@team` → everyone, in participant order.
-    if tokens.iter().any(|t| t == "all" || t == "team") {
+    if tokens.iter().any(|(_, t)| t == "all" || t == "team") {
         let everyone: Vec<String> = participants.iter().map(|(slug, _)| slug.clone()).collect();
         if !everyone.is_empty() {
             return everyone;
         }
     }
 
-    // Match each mention token against a participant slug or slugified name (first-seen order, deduped).
-    let mut addressed: Vec<String> = Vec::new();
-    for token in &tokens {
+    // Collect participant hits with their text position, from two passes:
+    // 1. mention tokens matched against a slug or slugified name;
+    // 2. a direct `@slug` / `@name` substring scan — CJK names have no whitespace boundary
+    //    ("@张三你好" tokenizes past the name), so scan for each participant verbatim.
+    // Positions merge the passes into first-occurrence order.
+    let mut hits: Vec<(usize, String)> = Vec::new();
+    for (pos, token) in &tokens {
         let token_slug = slugify(token);
         if let Some((slug, _)) = participants
             .iter()
             .find(|(slug, name)| *slug == token_slug || slugify(name) == token_slug)
         {
-            if !addressed.contains(slug) {
-                addressed.push(slug.clone());
+            hits.push((*pos, slug.clone()));
+        }
+    }
+    for (slug, name) in participants {
+        for needle in [slug.as_str(), name.as_str()] {
+            if needle.is_empty() {
+                continue;
             }
+            if let Some(pos) = text.find(&format!("@{needle}")) {
+                hits.push((pos, slug.clone()));
+            }
+        }
+    }
+    hits.sort_by_key(|(pos, _)| *pos);
+    let mut addressed: Vec<String> = Vec::new();
+    for (_, slug) in hits {
+        if !addressed.contains(&slug) {
+            addressed.push(slug);
         }
     }
 
@@ -62,18 +81,27 @@ pub fn followups(text: &str, participants: &[(String, String)], self_slug: &str)
         .collect()
 }
 
-/// Extract the raw `@token` strings from `text` (lowercased, without the `@`).
-fn mention_tokens(text: &str) -> Vec<String> {
+/// Extract the raw `@token` strings from `text` with their byte position (lowercased, without
+/// the `@`). A token is the run of Unicode letters/digits/`-`/`_` after `@`, so trailing
+/// punctuation self-delimits (e.g. "@architect," / "@all." / "@张三,").
+fn mention_tokens(text: &str) -> Vec<(usize, String)> {
     let mut out = Vec::new();
-    for word in text.split_whitespace() {
-        if let Some(rest) = word.strip_prefix('@') {
-            // Trim trailing punctuation (e.g. "@architect," / "@all.").
-            let tok: String = rest
-                .trim_end_matches(|c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_')
-                .to_ascii_lowercase();
-            if !tok.is_empty() {
-                out.push(tok);
+    let mut iter = text.char_indices().peekable();
+    while let Some((pos, c)) = iter.next() {
+        if c != '@' {
+            continue;
+        }
+        let mut tok = String::new();
+        while let Some(&(_, nc)) = iter.peek() {
+            if nc.is_alphanumeric() || nc == '-' || nc == '_' {
+                tok.extend(nc.to_lowercase());
+                iter.next();
+            } else {
+                break;
             }
+        }
+        if !tok.is_empty() {
+            out.push((pos, tok));
         }
     }
     out
@@ -160,6 +188,51 @@ mod tests {
     fn followups_have_no_coordinator_fallback() {
         // No mention → the thread ends (no coordinator loop, unlike `resolve`).
         assert!(followups("Looks good to me.", &parts(), "backend-architect").is_empty());
+    }
+
+    fn cn_parts() -> Vec<(String, String)> {
+        vec![
+            ("张三".into(), "张三".into()),
+            ("产品经理".into(), "产品经理".into()),
+        ]
+    }
+
+    #[test]
+    fn chinese_mention_with_space_resolves() {
+        assert_eq!(
+            resolve("@张三 你怎么看?", &cn_parts(), "产品经理"),
+            vec!["张三"]
+        );
+    }
+
+    #[test]
+    fn chinese_mention_without_boundary_resolves_via_substring() {
+        // No whitespace after the name — the token pass overshoots ("张三你怎么看"),
+        // the substring pass still finds "@张三".
+        assert_eq!(
+            resolve("@张三你怎么看?", &cn_parts(), "产品经理"),
+            vec!["张三"]
+        );
+    }
+
+    #[test]
+    fn chinese_mentions_keep_occurrence_order_mixed_with_ascii() {
+        let mixed = vec![
+            ("zhang-san".into(), "张三".into()),
+            ("copy-writer".into(), "Copy Writer".into()),
+        ];
+        assert_eq!(
+            resolve("@张三 先来,然后 @copy-writer 收尾", &mixed, "x"),
+            vec!["zhang-san", "copy-writer"]
+        );
+    }
+
+    #[test]
+    fn chinese_no_mention_falls_back_to_coordinator() {
+        assert_eq!(
+            resolve("随便聊聊", &cn_parts(), "产品经理"),
+            vec!["产品经理"]
+        );
     }
 
     #[test]

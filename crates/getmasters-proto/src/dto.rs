@@ -60,6 +60,9 @@ pub struct MessageDto {
     pub addressed_to: Option<String>,
     /// Plain text in Phase 0; structured content blocks arrive later.
     pub content: String,
+    /// Provider-reported token usage for this turn (input + output), when available.
+    #[serde(default)]
+    pub token_usage: Option<i64>,
     /// Epoch milliseconds.
     pub created_at: i64,
 }
@@ -77,6 +80,21 @@ pub struct AuditEntryDto {
     /// Human-readable outcome (e.g. "created a.txt", "denied by user"), or null.
     pub result_summary: Option<String>,
     /// Epoch milliseconds when the call was recorded.
+    pub created_at: i64,
+}
+
+/// One session event: an append-only record of run activity beyond the message transcript —
+/// tool calls/results, approval requests + decisions, completion/errors. The durable event log
+/// the managed-agents posture builds on (turn resume/wake later).
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct EventDto {
+    pub id: String,
+    pub session_id: String,
+    /// `tool_call` | `tool_result` | `approval_requested` | `approval_decided` | `complete` | `error`.
+    pub kind: String,
+    /// JSON detail for the event (redacted where applicable), or null.
+    pub payload: Option<String>,
+    /// Epoch milliseconds.
     pub created_at: i64,
 }
 
@@ -458,6 +476,14 @@ pub struct GroupPostRequest {
     pub max_rounds: Option<u32>,
 }
 
+/// One master's failure within a group round (the other masters' replies still return).
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct GroupMasterErrorDto {
+    /// The failing master's slug.
+    pub author: String,
+    pub message: String,
+}
+
 /// Result of a group post: the masters addressed in the **first** round + every round's attributed
 /// replies in order (Phase 4f: a post may run several mention-driven rounds).
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
@@ -466,6 +492,10 @@ pub struct GroupPostResult {
     pub addressed: Vec<String>,
     /// Each round's attributed replies, posted into the group session, in round-then-addressed order.
     pub replies: Vec<MessageDto>,
+    /// Masters that failed (per round, in dispatch order). A partial round still returns the
+    /// successful replies instead of failing the whole post.
+    #[serde(default)]
+    pub errors: Vec<GroupMasterErrorDto>,
 }
 
 /// An external MCP server connector for a project (Phase 4d, FR-20; ADR-0005).

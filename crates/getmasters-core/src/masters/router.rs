@@ -17,12 +17,59 @@ pub struct RankedMaster {
     pub score: f32,
 }
 
-/// Split text into lowercased alphanumeric terms of length ≥ 3 (drops noise like "a"/"the"/"of").
+/// Whether a char is CJK (the ranges that matter for Chinese text; kana/hangul excluded — they
+/// still match via their own runs' bigrams if added later).
+fn is_cjk(c: char) -> bool {
+    matches!(c,
+        '\u{4E00}'..='\u{9FFF}'   // CJK Unified Ideographs
+        | '\u{3400}'..='\u{4DBF}' // Extension A
+        | '\u{F900}'..='\u{FAFF}' // Compatibility Ideographs
+    )
+}
+
+/// Split text into match terms: lowercased ASCII-alphanumeric runs of length ≥ 3 (drops noise
+/// like "a"/"the"/"of"), plus **character bigrams** over each CJK run (a single-char run yields
+/// the char itself) — CJK has no whitespace word boundaries, so bigram overlap is the standard
+/// lexical signal.
 fn terms(text: &str) -> Vec<String> {
-    text.split(|c: char| !c.is_ascii_alphanumeric())
-        .filter(|t| t.len() >= 3)
-        .map(|t| t.to_ascii_lowercase())
-        .collect()
+    let mut out = Vec::new();
+    let mut ascii_run = String::new();
+    let mut cjk_run: Vec<char> = Vec::new();
+
+    let flush_ascii = |run: &mut String, out: &mut Vec<String>| {
+        if run.len() >= 3 {
+            out.push(run.to_ascii_lowercase());
+        }
+        run.clear();
+    };
+    let flush_cjk = |run: &mut Vec<char>, out: &mut Vec<String>| {
+        match run.len() {
+            0 => {}
+            1 => out.push(run[0].to_string()),
+            _ => {
+                for pair in run.windows(2) {
+                    out.push(pair.iter().collect());
+                }
+            }
+        }
+        run.clear();
+    };
+
+    for c in text.chars() {
+        if c.is_ascii_alphanumeric() {
+            flush_cjk(&mut cjk_run, &mut out);
+            ascii_run.push(c);
+        } else if is_cjk(c) {
+            flush_ascii(&mut ascii_run, &mut out);
+            cjk_run.push(c);
+        } else {
+            flush_ascii(&mut ascii_run, &mut out);
+            flush_cjk(&mut cjk_run, &mut out);
+        }
+    }
+    flush_ascii(&mut ascii_run, &mut out);
+    flush_cjk(&mut cjk_run, &mut out);
+    out
 }
 
 /// Rank `masters` (each `(slug, Master)`) against `brief`, best match first.
@@ -141,5 +188,39 @@ mod tests {
         let ranked = rank("xyzzy plugh", &members());
         assert!(ranked.iter().all(|r| r.score == 0.0));
         assert_eq!(select(&ranked, "writer"), "writer");
+    }
+
+    #[test]
+    fn cjk_terms_are_bigrams() {
+        let t = terms("设计数据库");
+        assert!(t.contains(&"设计".to_string()));
+        assert!(t.contains(&"数据".to_string()));
+        assert!(t.contains(&"据库".to_string()));
+        // Mixed text still yields the ASCII word.
+        let mixed = terms("设计 API 架构");
+        assert!(mixed.contains(&"api".to_string()));
+        assert!(mixed.contains(&"架构".to_string()));
+    }
+
+    #[test]
+    fn ranks_chinese_brief_against_chinese_masters() {
+        let members = vec![
+            (
+                "architect".into(),
+                master(
+                    "后端架构师",
+                    "负责数据库设计和接口方案。",
+                    "资深后端工程师。",
+                ),
+            ),
+            (
+                "writer".into(),
+                master("文案写手", "撰写营销文案和博客。", "文风活泼的写手。"),
+            ),
+        ];
+        let ranked = rank("帮我设计数据库表结构", &members);
+        assert_eq!(ranked[0].slug, "architect");
+        assert!(ranked[0].score > ranked[1].score);
+        assert_eq!(select(&ranked, "writer"), "architect");
     }
 }

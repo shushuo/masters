@@ -373,6 +373,21 @@ pub const MIGRATIONS: &[&str] = &[
         updated_at  INTEGER NOT NULL
     );
     "#,
+    // 0020 — session event log (the managed-agents "session = durable event log" slice): an
+    // append-only record of a run's activity beyond the message transcript — tool calls/results,
+    // approval requests + decisions, completion/errors. Written best-effort by the agent loop and
+    // the permission gate; read via GET /sessions/{id}/events. Turn resume/wake builds on this
+    // later; ints/strings only (lean core).
+    r#"
+    CREATE TABLE events (
+        id         TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        kind       TEXT NOT NULL,            -- tool_call | tool_result | approval_requested | approval_decided | complete | error
+        payload    TEXT,                     -- JSON detail (redacted where applicable)
+        created_at INTEGER NOT NULL
+    );
+    CREATE INDEX idx_events_session ON events(session_id, created_at);
+    "#,
 ];
 
 /// Apply any pending migrations. Safe to call on every startup.

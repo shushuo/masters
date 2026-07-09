@@ -395,6 +395,27 @@ impl Store {
         Ok(rows)
     }
 
+    /// Delete a session with its messages and events (group scratch cleanup, Phase 4c/4f).
+    /// Audit rows are deliberately kept — they are the durable record of gated tool calls.
+    pub fn delete_session(&self, id: &str) -> Result<()> {
+        let conn = self.lock();
+        conn.execute("DELETE FROM messages WHERE session_id = ?1", [id])?;
+        conn.execute("DELETE FROM events WHERE session_id = ?1", [id])?;
+        conn.execute("DELETE FROM sessions WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    /// Session ids whose title matches a SQL `LIKE` pattern — used by the daemon's startup GC
+    /// of orphaned group scratch sessions (`group:%:%`).
+    pub fn session_ids_titled_like(&self, pattern: &str) -> Result<Vec<String>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare("SELECT id FROM sessions WHERE title LIKE ?1")?;
+        let rows = stmt
+            .query_map([pattern], |r| r.get(0))?
+            .collect::<rusqlite::Result<Vec<String>>>()?;
+        Ok(rows)
+    }
+
     // --- Messages -----------------------------------------------------------
 
     /// Persist a message and return it. `role` is `"user" | "assistant" | "tool"`. The author
@@ -439,8 +460,19 @@ impl Store {
             author: author.to_string(),
             addressed_to: addressed_to.map(str::to_string),
             content: content.to_string(),
+            token_usage: None,
             created_at: ts,
         })
+    }
+
+    /// Record the provider-reported token usage for a persisted message (the agent loop calls
+    /// this after `Done` carries usage; absent for backends that don't report it).
+    pub fn set_message_token_usage(&self, id: &str, tokens: i64) -> Result<()> {
+        self.lock().execute(
+            "UPDATE messages SET token_usage = ?1 WHERE id = ?2",
+            rusqlite::params![tokens, id],
+        )?;
+        Ok(())
     }
 
     fn map_message(r: &rusqlite::Row) -> rusqlite::Result<MessageDto> {
@@ -454,6 +486,7 @@ impl Store {
             role,
             addressed_to: r.get(4)?,
             content: r.get(5)?,
+            token_usage: r.get(7)?,
             created_at: r.get(6)?,
         })
     }
@@ -462,13 +495,60 @@ impl Store {
     pub fn get_message(&self, id: &str) -> Result<MessageDto> {
         let conn = self.lock();
         conn.query_row(
-            "SELECT id, session_id, role, author, addressed_to, content, created_at
+            "SELECT id, session_id, role, author, addressed_to, content, created_at, token_usage
              FROM messages WHERE id = ?1",
             [id],
             Self::map_message,
         )
         .optional()?
         .ok_or_else(|| crate::CoreError::NotFound(format!("message {id}")))
+    }
+
+    // --- Events (session event log, migration 0019) --------------------------
+
+    /// Append one session event. Call sites are best-effort — a failed append is logged by the
+    /// caller, never failing the turn.
+    pub fn append_event(
+        &self,
+        session_id: &str,
+        kind: &str,
+        payload: Option<&str>,
+    ) -> Result<getmasters_proto::EventDto> {
+        let id = new_id();
+        let ts = now_ms();
+        self.lock().execute(
+            "INSERT INTO events (id, session_id, kind, payload, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![id, session_id, kind, payload, ts],
+        )?;
+        Ok(getmasters_proto::EventDto {
+            id,
+            session_id: session_id.to_string(),
+            kind: kind.to_string(),
+            payload: payload.map(str::to_string),
+            created_at: ts,
+        })
+    }
+
+    /// All events for a session, oldest first.
+    pub fn list_events(&self, session_id: &str) -> Result<Vec<getmasters_proto::EventDto>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(
+            "SELECT id, session_id, kind, payload, created_at
+             FROM events WHERE session_id = ?1 ORDER BY created_at ASC, rowid ASC",
+        )?;
+        let rows = stmt
+            .query_map([session_id], |r| {
+                Ok(getmasters_proto::EventDto {
+                    id: r.get(0)?,
+                    session_id: r.get(1)?,
+                    kind: r.get(2)?,
+                    payload: r.get(3)?,
+                    created_at: r.get(4)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
     }
 
     // --- Folder grants ------------------------------------------------------
@@ -2014,7 +2094,7 @@ impl Store {
     pub fn list_messages(&self, session_id: &str) -> Result<Vec<MessageDto>> {
         let conn = self.lock();
         let mut stmt = conn.prepare(
-            "SELECT id, session_id, role, author, addressed_to, content, created_at
+            "SELECT id, session_id, role, author, addressed_to, content, created_at, token_usage
              FROM messages WHERE session_id = ?1 ORDER BY created_at ASC",
         )?;
         let rows = stmt

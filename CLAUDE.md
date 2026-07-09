@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Current state: Phase 0 + Phase 1 + Phase 2 (2a/2b/2c) + Phase 3a/3b (Study) + 3c (Recipes) + 3d (Scheduler) + 3e (Delivery) + 4a (Masters) + 4b (Teams + router) + 4c (Group chat) + 4d (External MCP) + 4e (Group streaming) + 4f (Multi-round) + 4g (Group tool visibility) + 4h (Portable bundles) + 4i (External ACP master agents) + Desktop UI (design system, full management UI, ACP selector, chat history, audit viewer, theme toggle, group max-rounds) + Masters sidebar (standalone/global masters + system templates + quick chat) implemented
+## Current state: Phase 0 + Phase 1 + Phase 2 (2a/2b/2c) + Phase 3a/3b (Study) + 3c (Recipes) + 3d (Scheduler) + 3e (Delivery) + 4a (Masters) + 4b (Teams + router) + 4c (Group chat) + 4d (External MCP) + 4e (Group streaming) + 4f (Multi-round) + 4g (Group tool visibility) + 4h (Portable bundles) + 4i (External ACP master agents) + Desktop UI (design system, full management UI, ACP selector, chat history, audit viewer, theme toggle, group max-rounds) + Masters sidebar (standalone/global masters + system templates + quick chat) + Hardening pass (loop robustness, i18n, event log, ACP gate) implemented
 
 **Phase 0 (Foundations)** and **Phase 1a** are in place (see `docs/08-roadmap.md` and
 `DEVELOPMENT.md`): a Rust Cargo workspace under `crates/` (`getmasters-proto`, `getmasters-core`,
@@ -369,6 +369,35 @@ runs best-effort on startup (opt-out `GETMASTERS_NO_CATALOG_SYNC`) + `POST /cata
 (`masters-cloud/apps/web`) serves it from Prisma `SystemMaster`/`SystemSkill` tables (seeded via
 `prisma/seed.ts` from the former builtin gallery) at `GET /api/catalog` (`src/lib/catalog.ts`); the baked-in
 `GET /masters/templates` remains as an offline fallback.
+
+**Hardening pass** (post-sidebar; amends ADR-0014, extends ADR-0007/0008 seams): a cross-cutting
+robustness + i18n + foundations batch. **Core loop** — `RunLimits` (env-overridable `GETMASTERS_*`:
+max_tokens / tool iterations / tool + approval timeouts / transcript char budget / tool-result cap /
+provider retries) threaded through `TurnRun`; Stop/disconnect now halts further side-effecting dispatch
+(remaining calls recorded as cancelled — the transcript never ends on a dangling tool_use); approval
+prompts time out to Deny (`ChannelApprover` + `ApprovalRegistry::cancel`); retryable provider failures
+(429/5xx/transport — `ProviderError::{RateLimited,HttpStatus}` + `is_retryable`) retry with backoff and
+partial streamed text is persisted; per-tool timeouts; all-read rounds execute concurrently; the
+iteration cap ends with a final **no-tools** round (text answer, not an error); transcripts trim
+oldest-first to the char budget and tool results are capped; token usage (`StreamChunk::Done.usage`)
+persists to `messages.token_usage` (`MessageDto.token_usage`); Anthropic requests cache-mark the
+system + tool prefix; the event channel is bounded. **ToolExecutor trait** (`extensions`) — the loop's
+execution seam (`tool_schemas` + `execute`); `ExtensionManager` is the in-process impl,
+`with_executor` injects fakes/remote executors (the cloud "hands" upgrade path). **Session event log**
+(migration **0020** `events`) — append-only tool_call/tool_result/approval_requested/approval_decided/
+complete/error rows from the loop + gate; `GET /sessions/{id}/events` (`EventDto`) — the
+managed-agents "session = durable event log" slice (resume/wake later). **Unicode/CJK** — `slugify`
+keeps Unicode letters; `masters::router::terms` emits CJK bigrams; mentions add a positional
+`@slug`/`@name` substring pass — Chinese briefs/names route and address correctly. **Group chat** —
+`PromptContext.participants` injects the teammate roster (so 4f mention-driven follow-ups can actually
+trigger; ACP masters get it in the prompt text); scratch sessions are deleted after dispatch (+ a
+startup GC for `group:%:%` orphans); the sync post returns partial results + per-master
+`GroupPostResult.errors` instead of failing the round. **ACP hardening** (ADR-0014 amendment) —
+`session/request_permission` grant-checks **located** calls per path (denied + audited out-of-grant,
+even headless) and answers allow-once/reject-once (never blind first-option); group answer turns hand
+the harness the speaker-labelled transcript; `session/update` tool calls map onto
+ToolCallStarted/ToolResult + the event log (4g visibility for ACP); runs are bounded by
+`GETMASTERS_ACP_TIMEOUT_SECS` (default 600s).
 
 **Deferred to Phase 3 (later slices) and Phase 4:** the per-session **audit-log viewer** (`GET
 /sessions/{id}/audit`) and **group `max_rounds` over the WS stream** have since landed in the Desktop

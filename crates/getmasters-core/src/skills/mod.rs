@@ -35,12 +35,16 @@ pub struct Skill {
 }
 
 /// Derive a filesystem-safe slug from a skill name (lowercase, non-alphanumeric → `-`).
+/// Unicode letters/digits are kept (so CJK names slug to themselves, not an empty string);
+/// ASCII is lowercased as before.
 pub fn slugify(name: &str) -> String {
     let mut slug = String::new();
     let mut prev_dash = false;
     for ch in name.trim().chars() {
-        if ch.is_ascii_alphanumeric() {
-            slug.push(ch.to_ascii_lowercase());
+        if ch.is_alphanumeric() {
+            for lc in ch.to_lowercase() {
+                slug.push(lc);
+            }
             prev_dash = false;
         } else if !prev_dash {
             slug.push('-');
@@ -272,6 +276,9 @@ mod tests {
         assert_eq!(slugify("Summarize a PDF!"), "summarize-a-pdf");
         assert_eq!(slugify("  Weird___Name  "), "weird-name");
         assert_eq!(slugify("***"), "skill");
+        // Unicode names keep their letters instead of collapsing to dashes.
+        assert_eq!(slugify("张三"), "张三");
+        assert_eq!(slugify("产品经理 Pro"), "产品经理-pro");
     }
 
     #[test]

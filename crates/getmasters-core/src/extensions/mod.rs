@@ -44,10 +44,34 @@ pub struct ExternalConnector {
     pub env: Vec<(String, String)>,
 }
 
+/// The execution interface the agent loop dispatches tools through — the "hands" seam:
+/// `execute(name, input) → (text, is_error)`. [`ExtensionManager`] is the in-process
+/// implementation; a remote (device-side) executor behind the same trait is the documented
+/// upgrade path for running the loop off-machine. The Permission & Audit gate runs in the
+/// agent loop *before* `execute`, so no implementation can bypass approval.
+#[async_trait::async_trait]
+pub trait ToolExecutor: Send + Sync {
+    /// The tool schemas advertised to the model.
+    fn tool_schemas(&self) -> Vec<ToolSchema>;
+    /// Dispatch a namespaced tool call. Returns `(summary_text, is_error)`.
+    async fn execute(&self, name: &str, input: &Value) -> Result<(String, bool), String>;
+}
+
 /// Hosts built-in MCP servers and aggregates their tools.
 pub struct ExtensionManager {
     servers: Vec<HostedServer>,
     tools: Vec<ToolSchema>,
+}
+
+#[async_trait::async_trait]
+impl ToolExecutor for ExtensionManager {
+    fn tool_schemas(&self) -> Vec<ToolSchema> {
+        self.tools.clone()
+    }
+
+    async fn execute(&self, name: &str, input: &Value) -> Result<(String, bool), String> {
+        self.call_tool(name, input).await
+    }
 }
 
 impl ExtensionManager {

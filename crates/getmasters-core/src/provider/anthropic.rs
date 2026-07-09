@@ -77,22 +77,31 @@ impl AnthropicProvider {
             "messages": messages,
             "stream": stream,
         });
+        // Prompt caching: the system prompt and tool list are the large, stable prefix a
+        // multi-round tool loop re-sends verbatim every iteration — mark them ephemeral-cached.
         if let Some(system) = &req.system {
-            body["system"] = json!(system);
+            body["system"] = json!([{
+                "type": "text",
+                "text": system,
+                "cache_control": { "type": "ephemeral" },
+            }]);
         }
         if !req.tools.is_empty() {
-            body["tools"] = Value::Array(
-                req.tools
-                    .iter()
-                    .map(|t| {
-                        json!({
-                            "name": t.name,
-                            "description": t.description,
-                            "input_schema": t.input_schema,
-                        })
+            let mut tools: Vec<Value> = req
+                .tools
+                .iter()
+                .map(|t| {
+                    json!({
+                        "name": t.name,
+                        "description": t.description,
+                        "input_schema": t.input_schema,
                     })
-                    .collect(),
-            );
+                })
+                .collect();
+            if let Some(last) = tools.last_mut() {
+                last["cache_control"] = json!({ "type": "ephemeral" });
+            }
+            body["tools"] = Value::Array(tools);
         }
         body
     }
@@ -107,11 +116,7 @@ impl AnthropicProvider {
     }
 
     fn map_status(status: reqwest::StatusCode, body: &str) -> ProviderError {
-        if status == reqwest::StatusCode::UNAUTHORIZED {
-            ProviderError::Auth
-        } else {
-            ProviderError::Http(format!("{status}: {body}"))
-        }
+        ProviderError::from_status(status.as_u16(), body)
     }
 }
 
@@ -208,6 +213,8 @@ struct ToolBuf {
 #[derive(Default)]
 struct SseState {
     tools: HashMap<i64, ToolBuf>,
+    input_tokens: Option<u32>,
+    output_tokens: Option<u32>,
 }
 
 impl SseState {
@@ -215,6 +222,16 @@ impl SseState {
     fn handle(&mut self, event: &str, data: &str) -> Option<StreamChunk> {
         let v: Value = serde_json::from_str(data).ok()?;
         match event {
+            "message_start" => {
+                // `message.usage.input_tokens` arrives once, up front.
+                self.input_tokens = v
+                    .get("message")
+                    .and_then(|m| m.get("usage"))
+                    .and_then(|u| u.get("input_tokens"))
+                    .and_then(Value::as_u64)
+                    .map(|n| n as u32);
+                None
+            }
             "content_block_start" => {
                 let index = v.get("index").and_then(Value::as_i64)?;
                 let block = v.get("content_block")?;
@@ -283,7 +300,21 @@ impl SseState {
                     .and_then(|d| d.get("stop_reason"))
                     .and_then(Value::as_str)
                     .map(str::to_string);
-                Some(StreamChunk::Done { stop_reason })
+                // Cumulative output tokens ride on the top-level `usage` of message_delta.
+                self.output_tokens = v
+                    .get("usage")
+                    .and_then(|u| u.get("output_tokens"))
+                    .and_then(Value::as_u64)
+                    .map(|n| n as u32)
+                    .or(self.output_tokens);
+                let usage = match (self.input_tokens, self.output_tokens) {
+                    (None, None) => None,
+                    (i, o) => Some(crate::provider::TokenUsage {
+                        input_tokens: i.unwrap_or(0),
+                        output_tokens: o.unwrap_or(0),
+                    }),
+                };
+                Some(StreamChunk::Done { stop_reason, usage })
             }
             _ => None,
         }
@@ -302,7 +333,9 @@ mod tests {
         let body = AnthropicProvider::body(&req, true);
         assert_eq!(body["model"], "claude-opus-4-8");
         assert_eq!(body["stream"], true);
-        assert_eq!(body["system"], "be terse");
+        // System rides as a cache-marked block array (prompt caching).
+        assert_eq!(body["system"][0]["text"], "be terse");
+        assert_eq!(body["system"][0]["cache_control"]["type"], "ephemeral");
         assert_eq!(body["messages"][0]["role"], "user");
         assert_eq!(body["messages"][0]["content"][0]["type"], "text");
         assert!(body.get("tools").is_none());
@@ -322,6 +355,32 @@ mod tests {
         }];
         let body = AnthropicProvider::body(&req, true);
         assert_eq!(body["tools"][0]["name"], "files.read");
+        // The last tool carries the cache marker (stable-prefix caching).
+        assert_eq!(body["tools"][0]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn sse_message_delta_carries_usage() {
+        let mut s = SseState::default();
+        assert_eq!(
+            s.handle(
+                "message_start",
+                r#"{"type":"message_start","message":{"usage":{"input_tokens":11}}}"#
+            ),
+            None
+        );
+        let done = s.handle(
+            "message_delta",
+            r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":7}}"#,
+        );
+        match done {
+            Some(StreamChunk::Done { usage, .. }) => {
+                let u = usage.expect("usage");
+                assert_eq!(u.input_tokens, 11);
+                assert_eq!(u.output_tokens, 7);
+            }
+            other => panic!("expected Done, got {other:?}"),
+        }
     }
 
     #[test]

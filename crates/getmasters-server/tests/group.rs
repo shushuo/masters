@@ -90,6 +90,16 @@ async fn mention_addresses_one_master() {
     assert_eq!(transcript[0].author, "user");
     assert_eq!(transcript[1].author, "backend-architect");
 
+    // No failures — and the isolated scratch session was cleaned up after the dispatch.
+    assert!(res.errors.is_empty());
+    assert!(
+        store
+            .session_ids_titled_like("group:%:%")
+            .unwrap()
+            .is_empty(),
+        "scratch sessions should be deleted after a dispatch"
+    );
+
     std::fs::remove_dir_all(&dir).ok();
 }
 
