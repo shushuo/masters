@@ -61,6 +61,7 @@ Read in order; each builds on the previous.
 | 07 | [docs/07-ux-flows.md](./docs/07-ux-flows.md) | Key screens & user flows |
 | 08 | [docs/08-roadmap.md](./docs/08-roadmap.md) | Phased milestones MVP → v1 → v2 |
 | 09 | [docs/09-projects-masters.md](./docs/09-projects-masters.md) | Projects as context containers · Masters (persona-over-Skill) · Master Teams |
+| 10 | [docs/10-ui-design.md](./docs/10-ui-design.md) | UI design system: color tokens, layout, components, interaction principles · Manus/Cowork comparison · enhancements |
 | — | [docs/adr/](./docs/adr/) | Architecture Decision Records (0001–0014) |
 
 ---

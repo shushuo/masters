@@ -1,7 +1,9 @@
 # 07 — UX Flows
 
 This document sketches Masters's key screens and the flows that connect them. It is intentionally
-implementation-agnostic (wireframe-level), describing structure and interaction, not pixel design.
+implementation-agnostic (wireframe-level), describing structure and interaction, not pixel design —
+for the visual design system as implemented (tokens, components, theming), see
+[10 — UI Design](./10-ui-design.md).
 
 ## 1. Information architecture
 
