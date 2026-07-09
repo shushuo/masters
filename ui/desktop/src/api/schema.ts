@@ -612,6 +612,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sessions/{id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sessions/{id}/group": {
         parameters: {
             query?: never;
@@ -1017,6 +1033,24 @@ export interface components {
         ErrorDto: {
             error: string;
         };
+        /**
+         * @description One session event: an append-only record of run activity beyond the message transcript —
+         *     tool calls/results, approval requests + decisions, completion/errors. The durable event log
+         *     the managed-agents posture builds on (turn resume/wake later).
+         */
+        EventDto: {
+            /**
+             * Format: int64
+             * @description Epoch milliseconds.
+             */
+            created_at: number;
+            id: string;
+            /** @description `tool_call` | `tool_result` | `approval_requested` | `approval_decided` | `complete` | `error`. */
+            kind: string;
+            /** @description JSON detail for the event (redacted where applicable), or null. */
+            payload?: string | null;
+            session_id: string;
+        };
         /** @description A built-in MCP server and whether it's enabled for a project (FR-19). */
         ExtensionDto: {
             /** @description Whether it's hosted for the project (absent override = enabled). */
@@ -1044,6 +1078,12 @@ export interface components {
             /** @description Owning project; `None` for an ad-hoc/global grant. */
             project_id?: string | null;
         };
+        /** @description One master's failure within a group round (the other masters' replies still return). */
+        GroupMasterErrorDto: {
+            /** @description The failing master's slug. */
+            author: string;
+            message: string;
+        };
         /** @description Body for `POST /sessions/{id}/group` — a user message into a group chat (Phase 4c, FR-43). */
         GroupPostRequest: {
             content: string;
@@ -1061,6 +1101,11 @@ export interface components {
         GroupPostResult: {
             /** @description The master slugs the message resolved to in round 0 (mentions, `@all`, or the coordinator). */
             addressed: string[];
+            /**
+             * @description Masters that failed (per round, in dispatch order). A partial round still returns the
+             *     successful replies instead of failing the whole post.
+             */
+            errors?: components["schemas"]["GroupMasterErrorDto"][];
             /** @description Each round's attributed replies, posted into the group session, in round-then-addressed order. */
             replies: components["schemas"]["MessageDto"][];
         };
@@ -1160,6 +1205,11 @@ export interface components {
             /** @description `"user" | "assistant" | "tool"` (provider protocol role). */
             role: string;
             session_id: string;
+            /**
+             * Format: int64
+             * @description Provider-reported token usage for this turn (input + output), when available.
+             */
+            token_usage?: number | null;
         };
         /** @description A project (context container, ADR-0011). */
         ProjectDto: {
@@ -2790,6 +2840,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditEntryDto"][];
+                };
+            };
+        };
+    };
+    list_events: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Session id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The session's durable event log (tool calls/results, approvals, completion/errors) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventDto"][];
                 };
             };
         };
