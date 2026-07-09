@@ -45,6 +45,9 @@ pub struct PromptContext<'a> {
     pub memory_block: Option<String>,
     /// Auto-injected available-skill summaries (`name — summary`), if any.
     pub skill_summaries: Vec<(String, String)>,
+    /// Group-chat roster `(slug, name)` — non-empty only for group answer turns (ADR-0012), so
+    /// a master knows its teammates and can hand off with `@slug` mentions (Phase 4f).
+    pub participants: &'a [(String, String)],
 }
 
 /// Assembles the system prompt from ordered sources.
@@ -57,6 +60,21 @@ impl PromptAssembler {
         if let Some(persona) = ctx.persona.map(str::trim).filter(|p| !p.is_empty()) {
             sections.push(format!(
                 "You are acting as the following master:\n{persona}"
+            ));
+        }
+        // Group-chat roster: without this a master doesn't know its teammates exist, so the
+        // mention-driven follow-up rounds (Phase 4f) could never trigger.
+        if !ctx.participants.is_empty() {
+            let list = ctx
+                .participants
+                .iter()
+                .map(|(slug, name)| format!("- @{slug} ({name})"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            sections.push(format!(
+                "You are one member of a group chat. Teammates you can hand work to by \
+                 mentioning @<slug> in your reply (a mention requests their follow-up; no \
+                 mention ends the thread):\n{list}"
             ));
         }
         if ctx.tools_present {
@@ -155,6 +173,26 @@ mod tests {
         assert!(with.contains("terse backend architect"));
         // Persona is emitted before the tool guidance (frames the turn).
         assert!(with.find("backend architect").unwrap() < with.find("call tools").unwrap());
+    }
+
+    #[test]
+    fn participants_list_teammates_for_group_turns() {
+        let roster = vec![
+            ("copy-writer".to_string(), "Copy Writer".to_string()),
+            ("张三".to_string(), "张三".to_string()),
+        ];
+        let p = PromptAssembler::assemble(&PromptContext {
+            persona: Some("An architect."),
+            participants: &roster,
+            ..ctx()
+        })
+        .unwrap();
+        assert!(p.contains("group chat"));
+        assert!(p.contains("@copy-writer (Copy Writer)"));
+        assert!(p.contains("@张三"));
+        // Empty roster (ordinary chat) leaves the prompt untouched.
+        let without = PromptAssembler::assemble(&ctx()).unwrap();
+        assert!(!without.contains("group chat"));
     }
 
     #[test]

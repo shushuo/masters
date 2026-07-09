@@ -202,11 +202,7 @@ impl Provider for OpenAiProvider {
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(if status == reqwest::StatusCode::UNAUTHORIZED {
-                ProviderError::Auth
-            } else {
-                ProviderError::Http(format!("{status}: {text}"))
-            });
+            return Err(ProviderError::from_status(status.as_u16(), &text));
         }
 
         let events = resp.bytes_stream().eventsource();
@@ -242,11 +238,7 @@ impl Provider for OpenAiProvider {
             .await
             .map_err(|e| ProviderError::Http(e.to_string()))?;
         if !status.is_success() {
-            return Err(if status == reqwest::StatusCode::UNAUTHORIZED {
-                ProviderError::Auth
-            } else {
-                ProviderError::Http(format!("{status}: {text}"))
-            });
+            return Err(ProviderError::from_status(status.as_u16(), &text));
         }
         let v: Value =
             serde_json::from_str(&text).map_err(|e| ProviderError::Decode(e.to_string()))?;
@@ -286,6 +278,7 @@ struct OaTool {
 struct OaState {
     tools: BTreeMap<i64, OaTool>,
     done: bool,
+    usage: Option<crate::provider::TokenUsage>,
 }
 
 impl OaState {
@@ -317,7 +310,10 @@ impl OaState {
             }
             self.done = true;
             let mut out = self.flush_tools();
-            out.push(Ok(StreamChunk::Done { stop_reason: None }));
+            out.push(Ok(StreamChunk::Done {
+                stop_reason: None,
+                usage: self.usage.take(),
+            }));
             return out;
         }
 
@@ -325,6 +321,18 @@ impl OaState {
             Ok(v) => v,
             Err(e) => return vec![Err(ProviderError::Decode(e.to_string()))],
         };
+        // Some OpenAI-compatible backends emit a usage chunk (often with an empty
+        // `choices`) — capture it whenever present so `Done` can carry it.
+        if let Some(u) = v.get("usage").filter(|u| !u.is_null()) {
+            let read = |k: &str| u.get(k).and_then(Value::as_u64).map(|n| n as u32);
+            if read("prompt_tokens").is_some() || read("completion_tokens").is_some() {
+                self.usage = Some(crate::provider::TokenUsage {
+                    input_tokens: read("prompt_tokens").unwrap_or(0),
+                    output_tokens: read("completion_tokens").unwrap_or(0),
+                });
+            }
+        }
+
         let choice = match v.get("choices").and_then(|c| c.get(0)) {
             Some(c) => c,
             None => return vec![],
@@ -371,6 +379,7 @@ impl OaState {
             out.append(&mut self.flush_tools());
             out.push(Ok(StreamChunk::Done {
                 stop_reason: Some(reason.to_string()),
+                usage: self.usage.take(),
             }));
             self.done = true;
         }

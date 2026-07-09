@@ -91,8 +91,10 @@ impl ApprovalRegistry {
         }
     }
 
-    /// Wait for a decision (called by the agent run). A dropped sender resolves to `Deny`,
-    /// so a disconnected client or a Stop never wedges the run.
+    /// Wait for a decision (called by the agent run). The registered sender lives in the
+    /// registry until [`Self::resolve`] or [`Self::cancel`] removes it, so a disconnected
+    /// client does **not** resolve this by itself — [`ChannelApprover`] bounds the wait with a
+    /// timeout and cancels on expiry (timeout → `Deny`), so a Stop never wedges the run.
     pub async fn wait(&self, request_id: &str) -> ApprovalDecision {
         let rx = {
             let mut g = self.inner.lock().expect("approval registry poisoned");
@@ -105,21 +107,39 @@ impl ApprovalRegistry {
         };
         rx.await.unwrap_or(ApprovalDecision::Deny)
     }
+
+    /// Drop a pending waiter (a timed-out or abandoned request) so the registry doesn't leak.
+    pub fn cancel(&self, request_id: &str) {
+        let mut g = self.inner.lock().expect("approval registry poisoned");
+        g.waiters.remove(request_id);
+        g.early.remove(request_id);
+    }
 }
 
-/// Emits an approval request to the UI and awaits the decision via an [`ApprovalRegistry`].
+/// Default bound on how long an approval prompt may stay unanswered before it denies.
+pub const DEFAULT_APPROVAL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// Emits an approval request to the UI and awaits the decision via an [`ApprovalRegistry`],
+/// bounded by `timeout` — an unanswered prompt (user walked away, client disconnected) resolves
+/// to `Deny` and the waiter is cancelled, so the run can finish instead of wedging forever.
 #[derive(Clone)]
 pub struct ChannelApprover {
     registry: Arc<ApprovalRegistry>,
     emit: Arc<dyn Fn(ApprovalRequest) + Send + Sync>,
+    timeout: std::time::Duration,
 }
 
 impl ChannelApprover {
     pub fn new(
         registry: Arc<ApprovalRegistry>,
         emit: Arc<dyn Fn(ApprovalRequest) + Send + Sync>,
+        timeout: std::time::Duration,
     ) -> Self {
-        Self { registry, emit }
+        Self {
+            registry,
+            emit,
+            timeout,
+        }
     }
 }
 
@@ -128,7 +148,13 @@ impl Approver for ChannelApprover {
     async fn decide(&self, req: ApprovalRequest) -> ApprovalDecision {
         let request_id = req.request_id.clone();
         (self.emit)(req); // surface to the UI (the agent's event stream)
-        self.registry.wait(&request_id).await
+        match tokio::time::timeout(self.timeout, self.registry.wait(&request_id)).await {
+            Ok(decision) => decision,
+            Err(_) => {
+                self.registry.cancel(&request_id);
+                ApprovalDecision::Deny
+            }
+        }
     }
 }
 
@@ -156,6 +182,7 @@ mod tests {
         let approver = ChannelApprover::new(
             registry.clone(),
             Arc::new(move |req: ApprovalRequest| e2.lock().unwrap().push(req.request_id)),
+            DEFAULT_APPROVAL_TIMEOUT,
         );
         let req = ApprovalRequest {
             request_id: "r9".into(),
@@ -174,5 +201,25 @@ mod tests {
         let registry = ApprovalRegistry::new();
         registry.resolve("r1", ApprovalDecision::Allow); // arrives first
         assert_eq!(registry.wait("r1").await, ApprovalDecision::Allow);
+    }
+
+    #[tokio::test]
+    async fn unanswered_prompt_times_out_to_deny() {
+        let registry = Arc::new(ApprovalRegistry::new());
+        let approver = ChannelApprover::new(
+            registry.clone(),
+            Arc::new(|_req: ApprovalRequest| {}), // nobody listening
+            std::time::Duration::from_millis(20),
+        );
+        let req = ApprovalRequest {
+            request_id: "r-timeout".into(),
+            tool: "files.create".into(),
+            summary: "x".into(),
+            classes: vec![SideEffect::Write],
+        };
+        assert_eq!(approver.decide(req).await, ApprovalDecision::Deny);
+        // The waiter was cancelled — a late resolve lands in `early` and is dropped by cancel,
+        // so the registry doesn't leak.
+        registry.cancel("r-timeout");
     }
 }

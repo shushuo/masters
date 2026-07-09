@@ -22,6 +22,7 @@ use uuid::Uuid;
 
 pub use approver::{
     ApprovalDecision, ApprovalRegistry, ApprovalRequest, Approver, AutoApprover, ChannelApprover,
+    DEFAULT_APPROVAL_TIMEOUT,
 };
 pub use grant::GrantSet;
 
@@ -125,7 +126,30 @@ impl PermissionGate {
             summary: summary(tool, args),
             classes: vec![class],
         };
-        match self.approver.decide(request).await {
+        self.log_event(
+            "approval_requested",
+            serde_json::json!({
+                "request_id": request.request_id,
+                "tool": request.tool,
+                "summary": request.summary,
+            }),
+        );
+        let request_id = request.request_id.clone();
+        let decision = self.approver.decide(request).await;
+        self.log_event(
+            "approval_decided",
+            serde_json::json!({
+                "request_id": request_id,
+                "tool": tool,
+                "decision": match decision {
+                    ApprovalDecision::Deny => "deny",
+                    ApprovalDecision::Allow => "allow",
+                    ApprovalDecision::AllowFolder => "allow_folder",
+                    ApprovalDecision::AlwaysTool => "always_tool",
+                },
+            }),
+        );
+        match decision {
             ApprovalDecision::Deny => self.deny(tool, args, "denied by user"),
             ApprovalDecision::Allow => self.allow(tool, args, "approved"),
             // In Blank Slate mode, "always"/"folder" grants are not persisted (allow once only).
@@ -140,6 +164,18 @@ impl PermissionGate {
                     self.standing.lock().unwrap().grant_tool(tool);
                 }
                 self.allow(tool, args, "approved")
+            }
+        }
+    }
+
+    /// Best-effort append to the session event log (migration 0019); no session → no-op.
+    fn log_event(&self, kind: &str, payload: serde_json::Value) {
+        if let Some(session_id) = &self.session_id {
+            if let Err(e) = self
+                .store
+                .append_event(session_id, kind, Some(&payload.to_string()))
+            {
+                tracing::debug!(error = %e, kind, "failed to append session event");
             }
         }
     }

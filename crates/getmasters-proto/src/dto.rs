@@ -60,6 +60,9 @@ pub struct MessageDto {
     pub addressed_to: Option<String>,
     /// Plain text in Phase 0; structured content blocks arrive later.
     pub content: String,
+    /// Provider-reported token usage for this turn (input + output), when available.
+    #[serde(default)]
+    pub token_usage: Option<i64>,
     /// Epoch milliseconds.
     pub created_at: i64,
 }
@@ -77,6 +80,21 @@ pub struct AuditEntryDto {
     /// Human-readable outcome (e.g. "created a.txt", "denied by user"), or null.
     pub result_summary: Option<String>,
     /// Epoch milliseconds when the call was recorded.
+    pub created_at: i64,
+}
+
+/// One session event: an append-only record of run activity beyond the message transcript —
+/// tool calls/results, approval requests + decisions, completion/errors. The durable event log
+/// the managed-agents posture builds on (turn resume/wake later).
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct EventDto {
+    pub id: String,
+    pub session_id: String,
+    /// `tool_call` | `tool_result` | `approval_requested` | `approval_decided` | `complete` | `error`.
+    pub kind: String,
+    /// JSON detail for the event (redacted where applicable), or null.
+    pub payload: Option<String>,
+    /// Epoch milliseconds.
     pub created_at: i64,
 }
 

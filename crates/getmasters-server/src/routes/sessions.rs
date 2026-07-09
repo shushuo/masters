@@ -4,7 +4,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
 
-use getmasters_proto::{AuditEntryDto, CreateSessionRequest, RevertResult, SessionDto};
+use getmasters_proto::{AuditEntryDto, CreateSessionRequest, EventDto, RevertResult, SessionDto};
 
 use crate::state::{AppError, AppState};
 
@@ -70,4 +70,21 @@ pub async fn list_audit(
     let store = state.agent.store();
     store.get_session(&id)?; // 404 if the session is unknown
     Ok(Json(store.audit_entries(&id)?))
+}
+
+#[utoipa::path(
+    get,
+    path = "/sessions/{id}/events",
+    operation_id = "list_events",
+    params(("id" = String, Path, description = "Session id")),
+    responses((status = 200, description = "The session's durable event log (tool calls/results, approvals, completion/errors)", body = [EventDto])),
+    tag = "sessions"
+)]
+pub async fn list_events(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<EventDto>>, AppError> {
+    let store = state.agent.store();
+    store.get_session(&id)?; // 404 if the session is unknown
+    Ok(Json(store.list_events(&id)?))
 }

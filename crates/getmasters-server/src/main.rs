@@ -60,6 +60,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(provider = provider.name(), model = %cfg.model, db = ?db_path, "starting getmastersd");
 
     let agent = AgentService::new(store, provider, cfg.model.clone())
+        .with_limits(getmasters_core::agent::RunLimits::from_env())
         .with_approval_registry(Arc::new(ApprovalRegistry::new()));
     let token = generate_token();
     let state = AppState::new(agent, token.clone())

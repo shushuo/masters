@@ -90,6 +90,7 @@ impl Provider for MockProvider {
                 Ok(StreamChunk::TextDelta(format!("done: {summary}"))),
                 Ok(StreamChunk::Done {
                     stop_reason: Some("end_turn".into()),
+                    usage: None,
                 }),
             ];
             return Ok(stream::iter(chunks).boxed());
@@ -107,6 +108,7 @@ impl Provider for MockProvider {
                 }),
                 Ok(StreamChunk::Done {
                     stop_reason: Some("tool_use".into()),
+                    usage: None,
                 }),
             ];
             return Ok(stream::iter(chunks).boxed());
@@ -120,6 +122,7 @@ impl Provider for MockProvider {
             .collect();
         chunks.push(Ok(StreamChunk::Done {
             stop_reason: Some("end_turn".into()),
+            usage: None,
         }));
         Ok(stream::iter(chunks).boxed())
     }

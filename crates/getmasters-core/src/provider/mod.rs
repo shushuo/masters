@@ -160,6 +160,20 @@ impl ChatRequest {
     }
 }
 
+/// Token usage reported by a provider for one completion (absent when the backend doesn't
+/// report it — e.g. the mock, or OpenAI-compatible endpoints without a usage chunk).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TokenUsage {
+    pub input_tokens: u32,
+    pub output_tokens: u32,
+}
+
+impl TokenUsage {
+    pub fn total(&self) -> u32 {
+        self.input_tokens + self.output_tokens
+    }
+}
+
 /// A streamed chunk from [`Provider::stream`].
 #[derive(Clone, Debug, PartialEq)]
 pub enum StreamChunk {
@@ -172,14 +186,24 @@ pub enum StreamChunk {
         input: Value,
     },
     /// The stream finished; `stop_reason` is e.g. `"tool_use"`/`"tool_calls"`/`"end_turn"`.
-    Done { stop_reason: Option<String> },
+    Done {
+        stop_reason: Option<String>,
+        usage: Option<TokenUsage>,
+    },
 }
 
 /// Errors a provider can return.
 #[derive(thiserror::Error, Debug)]
 pub enum ProviderError {
+    /// Transport-level failure (connect/timeout/TLS) — no HTTP status was received.
     #[error("http error: {0}")]
     Http(String),
+    /// A non-success HTTP status other than 401/429.
+    #[error("http {status}: {body}")]
+    HttpStatus { status: u16, body: String },
+    /// 429 — the provider asked us to back off.
+    #[error("rate limited by provider")]
+    RateLimited,
     #[error("authentication failed")]
     Auth,
     #[error("decode error: {0}")]
@@ -188,6 +212,32 @@ pub enum ProviderError {
     Refusal,
     #[error("provider not configured: {0}")]
     NotConfigured(String),
+}
+
+impl ProviderError {
+    /// Whether retrying the same request may succeed (transient transport/server trouble).
+    /// Auth/decode/refusal/not-configured failures are deterministic — never retried.
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            ProviderError::RateLimited | ProviderError::Http(_) => true,
+            ProviderError::HttpStatus { status, .. } => {
+                *status == 408 || (500..=599).contains(status)
+            }
+            _ => false,
+        }
+    }
+
+    /// Map a non-success HTTP response to the right variant (shared by both providers).
+    pub fn from_status(status: u16, body: &str) -> Self {
+        match status {
+            401 => ProviderError::Auth,
+            429 => ProviderError::RateLimited,
+            _ => ProviderError::HttpStatus {
+                status,
+                body: body.to_string(),
+            },
+        }
+    }
 }
 
 /// A placeholder provider used when the daemon starts **without** a usable LLM provider so the

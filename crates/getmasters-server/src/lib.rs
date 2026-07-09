@@ -42,6 +42,7 @@ pub fn build_app(state: AppState) -> Router {
         .route("/sessions/{id}/ws", get(routes::ws::handler))
         .route("/sessions/{id}/revert", post(routes::sessions::revert))
         .route("/sessions/{id}/audit", get(routes::sessions::list_audit))
+        .route("/sessions/{id}/events", get(routes::sessions::list_events))
         .route(
             "/projects",
             post(routes::projects::create).get(routes::projects::list),
