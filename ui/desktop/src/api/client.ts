@@ -80,8 +80,14 @@ export interface StreamHandlers {
   onMasterDelta?: (round: number, author: string, text: string) => void;
   onMasterComplete?: (round: number, author: string, messageId: string) => void;
   onMasterError?: (round: number, author: string, message: string) => void;
-  onMasterToolCall?: (round: number, author: string, tool: string, summary: string) => void;
-  onMasterToolResult?: (round: number, author: string, summary: string, isError: boolean) => void;
+  onMasterToolCall?: (round: number, author: string, id: string, tool: string, summary: string) => void;
+  onMasterToolResult?: (
+    round: number,
+    author: string,
+    id: string,
+    summary: string,
+    isError: boolean,
+  ) => void;
   onGroupComplete?: () => void;
 }
 
@@ -789,10 +795,16 @@ export class MastersClient {
           handlers.onMasterError?.(event.round, event.author, event.message);
           break;
         case "master_tool_call":
-          handlers.onMasterToolCall?.(event.round, event.author, event.tool, event.summary);
+          handlers.onMasterToolCall?.(event.round, event.author, event.id, event.tool, event.summary);
           break;
         case "master_tool_result":
-          handlers.onMasterToolResult?.(event.round, event.author, event.summary, event.is_error);
+          handlers.onMasterToolResult?.(
+            event.round,
+            event.author,
+            event.id,
+            event.summary,
+            event.is_error,
+          );
           break;
         case "group_complete":
           handlers.onGroupComplete?.();

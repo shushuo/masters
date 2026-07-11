@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  ArrowDown,
   Check,
-  CircleAlert,
   PanelRight,
   Plus,
   SendHorizontal,
   ShieldCheck,
   Square,
   Undo2,
-  Wrench,
   X,
 } from "lucide-react";
 import {
@@ -17,7 +16,18 @@ import {
   type PendingApproval,
   type SessionDto,
 } from "../api/client";
-import { Badge, Button, IconButton, Input, PandaMark, Select } from "./ui";
+import {
+  Badge,
+  Button,
+  Composer,
+  IconButton,
+  Markdown,
+  PandaMark,
+  Select,
+  ToolStep,
+  type ToolStepData,
+} from "./ui";
+import { useStickToBottom } from "../lib/useStickToBottom";
 
 const DECISION_VARIANT: Record<string, "neutral" | "success" | "danger"> = {
   auto: "neutral",
@@ -25,11 +35,10 @@ const DECISION_VARIANT: Record<string, "neutral" | "success" | "danger"> = {
   denied: "danger",
 };
 
-interface Turn {
-  role: "user" | "assistant" | "tool";
-  content: string;
-  isError?: boolean;
-}
+type Turn =
+  | { kind: "user"; content: string }
+  | { kind: "assistant"; content: string }
+  | { kind: "tool"; step: ToolStepData };
 
 export function Chat({ client }: { client: MastersClient }) {
   const [sessions, setSessions] = useState<SessionDto[]>([]);
@@ -42,6 +51,7 @@ export function Chat({ client }: { client: MastersClient }) {
   const [showPanel, setShowPanel] = useState(false);
   const [audit, setAudit] = useState<AuditEntryDto[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
+  const { ref: scrollRef, atBottom, scrollToBottom } = useStickToBottom([turns]);
 
   async function refreshAudit(id = sessionId) {
     if (!id) return;
@@ -97,10 +107,13 @@ export function Chat({ client }: { client: MastersClient }) {
     try {
       const msgs = await client.listMessages(id);
       setTurns(
-        msgs.map((m) => ({
-          role: (m.role === "assistant" || m.role === "tool" ? m.role : "user") as Turn["role"],
-          content: m.content,
-        })),
+        msgs.map((m): Turn =>
+          m.role === "tool"
+            ? { kind: "tool", step: { id: m.id, tool: "tool", callSummary: m.content } }
+            : m.role === "assistant"
+              ? { kind: "assistant", content: m.content }
+              : { kind: "user", content: m.content },
+        ),
       );
     } catch (e) {
       setTurns([]);
@@ -112,28 +125,40 @@ export function Chat({ client }: { client: MastersClient }) {
     setTurns((t) => {
       const next = [...t];
       const last = next[next.length - 1];
-      if (last && last.role === "assistant") {
-        next[next.length - 1] = { role: "assistant", content: last.content + text };
+      if (last && last.kind === "assistant") {
+        next[next.length - 1] = { kind: "assistant", content: last.content + text };
       } else {
-        next.push({ role: "assistant", content: text });
+        next.push({ kind: "assistant", content: text });
       }
       return next;
     });
+  }
+
+  function addToolCall(id: string, tool: string, summary: string) {
+    setTurns((t) => [...t, { kind: "tool", step: { id, tool, callSummary: summary } }]);
+  }
+
+  function addToolResult(id: string, summary: string, isError: boolean) {
+    setTurns((t) =>
+      t.map((turn) =>
+        turn.kind === "tool" && turn.step.id === id
+          ? { kind: "tool", step: { ...turn.step, result: { summary, isError } } }
+          : turn,
+      ),
+    );
   }
 
   function send() {
     if (!sessionId || !input.trim() || streaming) return;
     const content = input.trim();
     setInput("");
-    setTurns((t) => [...t, { role: "user", content }, { role: "assistant", content: "" }]);
+    setTurns((t) => [...t, { kind: "user", content }, { kind: "assistant", content: "" }]);
     setStreaming(true);
 
     wsRef.current = client.openStream(sessionId, content, {
       onDelta: appendAssistant,
-      onToolCall: (_id, tool, summary) =>
-        setTurns((t) => [...t, { role: "tool", content: `${tool} · ${summary}` }]),
-      onToolResult: (_id, summary, isError) =>
-        setTurns((t) => [...t, { role: "tool", content: summary, isError }]),
+      onToolCall: addToolCall,
+      onToolResult: addToolResult,
       onApproval: (a) => setApproval(a),
       onComplete: () => {
         setStreaming(false);
@@ -142,7 +167,7 @@ export function Chat({ client }: { client: MastersClient }) {
       },
       onError: (message) => {
         setStreaming(false);
-        setTurns((t) => [...t, { role: "assistant", content: `⚠️ ${message}` }]);
+        appendAssistant(`\n\n⚠️ ${message}`);
       },
     });
   }
@@ -200,45 +225,51 @@ export function Chat({ client }: { client: MastersClient }) {
           </IconButton>
         </div>
 
-        <div className="flex-1 space-y-3 overflow-y-auto p-6">
-          {turns.length === 0 && (
-            <div className="mx-auto mt-16 flex max-w-sm flex-col items-center text-center">
-              <PandaMark className="size-16 opacity-90" />
-              <h2 className="mt-4 text-xl font-semibold text-text">
-                What can Masters do for you?
-              </h2>
-              <p className="mt-2 text-sm text-muted">
-                Ask Masters to work on your granted files — every tool call is gated and audited.
-              </p>
-            </div>
-          )}
-          {turns.map((turn, i) =>
-            turn.role === "tool" ? (
-              <div
-                key={i}
-                className="flex items-start gap-2 rounded border border-tool-border bg-tool-bg px-3 py-2 font-mono text-xs text-tool-fg"
-              >
-                {turn.isError ? (
-                  <CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-                ) : (
-                  <Wrench className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-                )}
-                <span className="whitespace-pre-wrap break-words">{turn.content}</span>
+        <div className="relative min-h-0 flex-1">
+          <div
+            ref={scrollRef}
+            className="h-full space-y-3 overflow-y-auto p-6"
+            role="log"
+            aria-live="polite"
+          >
+            {turns.length === 0 && (
+              <div className="mx-auto mt-16 flex max-w-sm flex-col items-center text-center">
+                <PandaMark className="size-16 opacity-90" />
+                <h2 className="mt-4 text-xl font-semibold text-text">What can Masters do for you?</h2>
+                <p className="mt-2 text-sm text-muted">
+                  Ask Masters to work on your granted files — every tool call is gated and audited.
+                </p>
               </div>
-            ) : (
-              <div key={i} className={turn.role === "user" ? "text-right" : "text-left"}>
-                <span
-                  className={
-                    "inline-block max-w-[80%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm " +
-                    (turn.role === "user"
-                      ? "rounded-br-sm bg-accent text-accent-fg"
-                      : "rounded-bl-sm bg-surface-2 text-text")
-                  }
-                >
-                  {turn.content || (turn.role === "assistant" ? "…" : "")}
-                </span>
-              </div>
-            ),
+            )}
+            {turns.map((turn, i) =>
+              turn.kind === "tool" ? (
+                <ToolStep key={turn.step.id || i} step={turn.step} />
+              ) : turn.kind === "user" ? (
+                <div key={i} className="text-right">
+                  <span className="inline-block max-w-[80%] whitespace-pre-wrap rounded-lg rounded-br-sm bg-accent px-3 py-2 text-sm text-accent-fg">
+                    {turn.content}
+                  </span>
+                </div>
+              ) : (
+                <div key={i} className="text-left">
+                  <div className="inline-block max-w-[80%] rounded-lg rounded-bl-sm bg-surface-2 px-3 py-2 text-text">
+                    {turn.content ? (
+                      <Markdown text={turn.content} />
+                    ) : (
+                      <span className="text-sm text-muted">…</span>
+                    )}
+                  </div>
+                </div>
+              ),
+            )}
+          </div>
+          {!atBottom && (
+            <button
+              onClick={() => scrollToBottom("smooth")}
+              className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-border bg-bg px-3 py-1 text-xs text-muted shadow hover:text-text"
+            >
+              <ArrowDown className="size-3.5" /> Jump to latest
+            </button>
           )}
         </div>
 
@@ -263,33 +294,32 @@ export function Chat({ client }: { client: MastersClient }) {
         )}
 
         {notice && (
-          <div className="border-t border-border bg-surface px-4 py-2 text-xs text-muted">
-            {notice}
-          </div>
+          <div className="border-t border-border bg-surface px-4 py-2 text-xs text-muted">{notice}</div>
         )}
 
-        <div className="flex gap-2 border-t border-border bg-bg p-3">
-          <Input
-            className="flex-1"
-            placeholder={sessionId ? "Message Masters…" : "Connecting…"}
-            value={input}
-            disabled={!sessionId}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && send()}
-          />
-          <Button variant="ghost" onClick={revert} title="Undo the last file change">
-            <Undo2 className="size-4" /> Revert
-          </Button>
-          {streaming ? (
-            <Button variant="secondary" onClick={stop}>
-              <Square className="size-4" /> Stop
-            </Button>
-          ) : (
-            <Button variant="primary" onClick={send} disabled={!sessionId || !input.trim()}>
-              <SendHorizontal className="size-4" /> Send
-            </Button>
-          )}
-        </div>
+        <Composer
+          value={input}
+          onChange={setInput}
+          onSubmit={send}
+          disabled={!sessionId}
+          placeholder={sessionId ? "Message Masters…  (Shift+Enter for a new line)" : "Connecting…"}
+          trailing={
+            <>
+              <Button variant="ghost" onClick={revert} title="Undo the last file change">
+                <Undo2 className="size-4" /> Revert
+              </Button>
+              {streaming ? (
+                <Button variant="secondary" onClick={stop}>
+                  <Square className="size-4" /> Stop
+                </Button>
+              ) : (
+                <Button variant="primary" onClick={send} disabled={!sessionId || !input.trim()}>
+                  <SendHorizontal className="size-4" /> Send
+                </Button>
+              )}
+            </>
+          }
+        />
       </div>
 
       {/* Right-hand context panel: session detail + this turn's gated tool activity. */}
@@ -301,9 +331,7 @@ export function Chat({ client }: { client: MastersClient }) {
           </div>
           <div>
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
-                Audit trail
-              </h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Audit trail</h3>
               <span className="text-xs text-faint">{audit.length}</span>
             </div>
             {audit.length === 0 ? (
@@ -314,9 +342,7 @@ export function Chat({ client }: { client: MastersClient }) {
                   <li key={e.id} className="rounded border border-border bg-bg p-2">
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate font-mono text-xs text-text">{e.tool}</span>
-                      <Badge variant={DECISION_VARIANT[e.decision] ?? "neutral"}>
-                        {e.decision}
-                      </Badge>
+                      <Badge variant={DECISION_VARIANT[e.decision] ?? "neutral"}>{e.decision}</Badge>
                     </div>
                     {e.result_summary && (
                       <div className="mt-1 break-words text-xs text-muted">{e.result_summary}</div>

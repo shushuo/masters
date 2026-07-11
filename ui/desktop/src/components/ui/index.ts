@@ -7,3 +7,6 @@ export { Textarea, type TextareaProps } from "./Textarea";
 export { Select, type SelectProps } from "./Select";
 export { Badge, type BadgeProps } from "./Badge";
 export { PandaMark, Wordmark } from "./Brand";
+export { Markdown } from "./Markdown";
+export { ToolStep, type ToolStepData } from "./ToolStep";
+export { Composer } from "./Composer";

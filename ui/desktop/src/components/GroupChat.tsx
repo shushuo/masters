@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, SendHorizontal } from "lucide-react";
 import { MastersClient } from "../api/client";
-import { Button, Input, Select } from "./ui";
+import { Button, Composer, Markdown, Select, ToolStep, type ToolStepData } from "./ui";
 
 interface Bubble {
   key: string;
   round: number;
   author: string;
   content: string;
-  tools: string[];
+  steps: ToolStepData[];
 }
 
 /**
@@ -91,9 +91,33 @@ export function GroupChat({
     setBubbles((b) => b.map((x) => (x.key === key ? { ...x, content: x.content + text } : x)));
   }
 
-  function appendTool(round: number, author: string, line: string) {
+  function addToolCall(round: number, author: string, id: string, tool: string, summary: string) {
     const key = bubbleKey(round, author);
-    setBubbles((b) => b.map((x) => (x.key === key ? { ...x, tools: [...x.tools, line] } : x)));
+    setBubbles((b) =>
+      b.map((x) =>
+        x.key === key ? { ...x, steps: [...x.steps, { id, tool, callSummary: summary }] } : x,
+      ),
+    );
+  }
+
+  function addToolResult(
+    round: number,
+    author: string,
+    id: string,
+    summary: string,
+    isError: boolean,
+  ) {
+    const key = bubbleKey(round, author);
+    setBubbles((b) =>
+      b.map((x) =>
+        x.key === key
+          ? {
+              ...x,
+              steps: x.steps.map((s) => (s.id === id ? { ...s, result: { summary, isError } } : s)),
+            }
+          : x,
+      ),
+    );
   }
 
   async function send() {
@@ -107,7 +131,7 @@ export function GroupChat({
       turnRef.current = turn;
       setBubbles((b) => [
         ...b,
-        { key: `${turn}:user`, round: -1, author: "user", content, tools: [] },
+        { key: `${turn}:user`, round: -1, author: "user", content, steps: [] },
       ]);
       setDraft("");
 
@@ -124,14 +148,13 @@ export function GroupChat({
             round,
             author,
             content: "",
-            tools: [],
+            steps: [] as ToolStepData[],
           }));
           setBubbles((b) => [...b, ...placeholders]);
         },
         onMasterDelta: appendDelta,
-        onMasterToolCall: (round, author, tool) => appendTool(round, author, `→ ${tool}`),
-        onMasterToolResult: (round, author, summary, isError) =>
-          appendTool(round, author, `${isError ? "⚠️" : "←"} ${summary}`),
+        onMasterToolCall: addToolCall,
+        onMasterToolResult: addToolResult,
         onMasterError: (round, author, message) => appendDelta(round, author, `\n⚠️ ${message}`),
         onGroupComplete: () => setBusy(false),
           onError: (message) => {
@@ -174,72 +197,87 @@ export function GroupChat({
                 </div>
               )}
               <div className={m.author === "user" ? "text-right" : ""}>
-                <div className="text-xs text-faint">{m.author}</div>
-                {m.tools.map((line, j) => (
-                  <div key={j} className="font-mono text-[11px] text-faint">
-                    {line}
+                <div className="text-xs font-medium text-muted">{m.author}</div>
+                {m.steps.length > 0 && (
+                  <div className="my-1 space-y-1">
+                    {m.steps.map((s) => (
+                      <ToolStep key={s.id} step={s} />
+                    ))}
                   </div>
-                ))}
+                )}
                 <div
-                  className={`inline-block whitespace-pre-wrap rounded px-2 py-1 ${
-                    m.author === "user" ? "bg-accent text-accent-fg" : "bg-surface-2 text-text"
+                  className={`inline-block rounded px-2 py-1 ${
+                    m.author === "user"
+                      ? "whitespace-pre-wrap bg-accent text-accent-fg"
+                      : "bg-surface-2 text-text"
                   }`}
                 >
-                  {m.content || "…"}
+                  {m.author === "user" ? (
+                    m.content || "…"
+                  ) : m.content ? (
+                    <Markdown text={m.content} />
+                  ) : (
+                    "…"
+                  )}
                 </div>
               </div>
             </div>
           );
         })}
       </div>
-      {members.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-border px-2 pt-2 text-xs">
-          <button
-            className="rounded-sm bg-surface-2 px-1.5 py-0.5 text-muted hover:text-text"
-            onClick={() => mention("all")}
-          >
-            @all
-          </button>
-          {members.map((slug) => (
-            <button
-              key={slug}
-              className="rounded-sm bg-surface-2 px-1.5 py-0.5 text-muted hover:text-text"
-              title={slug === coordinator ? "coordinator (answers unaddressed messages)" : undefined}
-              onClick={() => mention(slug)}
+      <Composer
+        value={draft}
+        onChange={setDraft}
+        onSubmit={send}
+        disabled={busy}
+        placeholder="Message the team…  (@master / @all · Shift+Enter for a new line)"
+        leading={
+          members.length > 0 ? (
+            <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs">
+              <button
+                className="rounded-sm bg-surface-2 px-1.5 py-0.5 text-muted hover:text-text"
+                onClick={() => mention("all")}
+              >
+                @all
+              </button>
+              {members.map((slug) => (
+                <button
+                  key={slug}
+                  className="rounded-sm bg-surface-2 px-1.5 py-0.5 text-muted hover:text-text"
+                  title={
+                    slug === coordinator ? "coordinator (answers unaddressed messages)" : undefined
+                  }
+                  onClick={() => mention(slug)}
+                >
+                  @{slug}
+                  {slug === coordinator && <span className="ml-1 text-accent">★</span>}
+                </button>
+              ))}
+            </div>
+          ) : undefined
+        }
+        trailing={
+          <>
+            <Select
+              className="w-auto"
+              title="Max follow-up rounds"
+              value={maxRounds?.toString() ?? ""}
+              disabled={busy}
+              onChange={(e) => setMaxRounds(e.target.value ? Number(e.target.value) : undefined)}
             >
-              @{slug}
-              {slug === coordinator && <span className="ml-1 text-accent">★</span>}
-            </button>
-          ))}
-        </div>
-      )}
-      <div className="flex gap-2 border-t border-border p-2">
-        <Input
-          className="flex-1"
-          placeholder="Message the team… (@master / @all)"
-          value={draft}
-          disabled={busy}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && send()}
-        />
-        <Select
-          className="w-auto"
-          title="Max follow-up rounds"
-          value={maxRounds?.toString() ?? ""}
-          disabled={busy}
-          onChange={(e) => setMaxRounds(e.target.value ? Number(e.target.value) : undefined)}
-        >
-          <option value="">Rounds: auto</option>
-          {[1, 2, 3, 4, 5].map((n) => (
-            <option key={n} value={n}>
-              {n} round{n === 1 ? "" : "s"}
-            </option>
-          ))}
-        </Select>
-        <Button variant="primary" disabled={busy || !draft.trim()} onClick={send}>
-          <SendHorizontal className="size-4" /> {busy ? "…" : "Send"}
-        </Button>
-      </div>
+              <option value="">Rounds: auto</option>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <option key={n} value={n}>
+                  {n} round{n === 1 ? "" : "s"}
+                </option>
+              ))}
+            </Select>
+            <Button variant="primary" disabled={busy || !draft.trim()} onClick={send}>
+              <SendHorizontal className="size-4" /> {busy ? "…" : "Send"}
+            </Button>
+          </>
+        }
+      />
     </div>
   );
 }
