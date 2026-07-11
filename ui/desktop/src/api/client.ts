@@ -128,6 +128,15 @@ export class MastersClient {
     return res.json();
   }
 
+  /** Delete a chat session (and its messages/events). */
+  async deleteSession(sessionId: string): Promise<void> {
+    const res = await fetch(`${this.base()}/sessions/${sessionId}`, {
+      method: "DELETE",
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`deleteSession failed: ${res.status}`);
+  }
+
   async listMessages(sessionId: string): Promise<MessageDto[]> {
     const res = await fetch(`${this.base()}/sessions/${sessionId}/messages`, {
       headers: this.headers(),

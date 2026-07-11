@@ -26,6 +26,7 @@ use getmasters_proto::{
         crate::routes::health::health,
         crate::routes::sessions::create,
         crate::routes::sessions::list,
+        crate::routes::sessions::delete,
         crate::routes::sessions::list_audit,
         crate::routes::sessions::list_events,
         crate::routes::sessions::revert,

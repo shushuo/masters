@@ -628,6 +628,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sessions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["delete_session"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sessions/{id}/audit": {
         parameters: {
             query?: never;
@@ -2965,6 +2981,27 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SessionDto"];
                 };
+            };
+        };
+    };
+    delete_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Session id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

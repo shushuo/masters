@@ -3,19 +3,13 @@ import {
   ArrowDown,
   Check,
   PanelRight,
-  Plus,
   SendHorizontal,
   ShieldCheck,
   Square,
   Undo2,
   X,
 } from "lucide-react";
-import {
-  MastersClient,
-  type AuditEntryDto,
-  type PendingApproval,
-  type SessionDto,
-} from "../api/client";
+import { MastersClient, type AuditEntryDto, type PendingApproval } from "../api/client";
 import {
   Badge,
   Button,
@@ -23,7 +17,6 @@ import {
   IconButton,
   Markdown,
   PandaMark,
-  Select,
   ToolStep,
   type ToolStepData,
 } from "./ui";
@@ -40,12 +33,26 @@ type Turn =
   | { kind: "assistant"; content: string }
   | { kind: "tool"; step: ToolStepData };
 
-export function Chat({ client }: { client: MastersClient }) {
-  const [sessions, setSessions] = useState<SessionDto[]>([]);
-  const [sessionId, setSessionId] = useState<string | null>(null);
+/**
+ * The single-agent chat pane. Controlled by App: the active `sessionId` and `streaming`
+ * state live upstream (so the Sidebar's session list stays in sync and can block
+ * switching mid-run). Chat owns only the in-flight transcript + approval/audit UI.
+ */
+export function Chat({
+  client,
+  sessionId,
+  streaming,
+  onStreamingChange,
+  onActivity,
+}: {
+  client: MastersClient;
+  sessionId: string | null;
+  streaming: boolean;
+  onStreamingChange: (streaming: boolean) => void;
+  onActivity: () => void;
+}) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
-  const [streaming, setStreaming] = useState(false);
   const [approval, setApproval] = useState<PendingApproval | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [showPanel, setShowPanel] = useState(false);
@@ -64,25 +71,35 @@ export function Chat({ client }: { client: MastersClient }) {
     }
   }
 
-  async function refreshSessions() {
-    try {
-      setSessions(await client.listSessions());
-    } catch {
-      /* non-fatal: the switcher just stays empty */
-    }
-  }
-
-  // On mount: start a fresh chat session, and load the list of prior sessions to switch between.
+  // Load the active session's history whenever it changes (App owns which session is active).
   useEffect(() => {
+    if (!sessionId) {
+      setTurns([]);
+      return;
+    }
+    let cancelled = false;
+    setNotice(null);
     client
-      .createSession("Desktop chat")
-      .then((s) => {
-        setSessionId(s.id);
-        refreshSessions();
+      .listMessages(sessionId)
+      .then((msgs) => {
+        if (cancelled) return;
+        setTurns(
+          msgs.map((m): Turn =>
+            m.role === "tool"
+              ? { kind: "tool", step: { id: m.id, tool: "tool", callSummary: m.content } }
+              : m.role === "assistant"
+                ? { kind: "assistant", content: m.content }
+                : { kind: "user", content: m.content },
+          ),
+        );
       })
-      .catch((e) => console.error(e));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client]);
+      .catch(() => {
+        if (!cancelled) setTurns([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, sessionId]);
 
   // Keep the audit trail in sync with the active session whenever the panel is open.
   useEffect(() => {
@@ -90,14 +107,10 @@ export function Chat({ client }: { client: MastersClient }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showPanel, sessionId]);
 
-  // Global shortcuts: Esc stops an in-flight stream; ⌘/Ctrl+N starts a new chat.
+  // Esc stops an in-flight stream.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape" && streaming) stop();
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
-        e.preventDefault();
-        if (!streaming) newChat();
-      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -127,39 +140,6 @@ export function Chat({ client }: { client: MastersClient }) {
     } else if (!e.shiftKey && document.activeElement === last) {
       e.preventDefault();
       first.focus();
-    }
-  }
-
-  async function newChat() {
-    try {
-      const s = await client.createSession("Desktop chat");
-      setSessionId(s.id);
-      setTurns([]);
-      setNotice(null);
-      refreshSessions();
-    } catch (e) {
-      setNotice(`New chat failed: ${String(e)}`);
-    }
-  }
-
-  async function switchSession(id: string) {
-    if (id === sessionId || streaming) return;
-    setSessionId(id);
-    setNotice(null);
-    try {
-      const msgs = await client.listMessages(id);
-      setTurns(
-        msgs.map((m): Turn =>
-          m.role === "tool"
-            ? { kind: "tool", step: { id: m.id, tool: "tool", callSummary: m.content } }
-            : m.role === "assistant"
-              ? { kind: "assistant", content: m.content }
-              : { kind: "user", content: m.content },
-        ),
-      );
-    } catch (e) {
-      setTurns([]);
-      setNotice(`Could not load session: ${String(e)}`);
     }
   }
 
@@ -195,7 +175,7 @@ export function Chat({ client }: { client: MastersClient }) {
     const content = input.trim();
     setInput("");
     setTurns((t) => [...t, { kind: "user", content }, { kind: "assistant", content: "" }]);
-    setStreaming(true);
+    onStreamingChange(true);
 
     wsRef.current = client.openStream(sessionId, content, {
       onDelta: appendAssistant,
@@ -203,12 +183,12 @@ export function Chat({ client }: { client: MastersClient }) {
       onToolResult: addToolResult,
       onApproval: (a) => setApproval(a),
       onComplete: () => {
-        setStreaming(false);
-        refreshSessions();
+        onStreamingChange(false);
+        onActivity();
         refreshAudit();
       },
       onError: (message) => {
-        setStreaming(false);
+        onStreamingChange(false);
         appendAssistant(`\n\n⚠️ ${message}`);
       },
     });
@@ -224,7 +204,7 @@ export function Chat({ client }: { client: MastersClient }) {
   function stop() {
     wsRef.current?.send(JSON.stringify({ type: "stop" }));
     wsRef.current?.close();
-    setStreaming(false);
+    onStreamingChange(false);
   }
 
   async function revert() {
@@ -240,24 +220,7 @@ export function Chat({ client }: { client: MastersClient }) {
   return (
     <div className="flex h-full min-h-0">
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Session bar: switch between prior chats or start a new one. */}
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-          <Select
-            className="max-w-xs"
-            value={sessionId ?? ""}
-            onChange={(e) => switchSession(e.target.value)}
-            disabled={streaming}
-          >
-            {sessions.length === 0 && <option value="">Desktop chat</option>}
-            {sessions.map((s) => (
-              <option key={s.id} value={s.id}>
-                {(s.title || "Untitled") + " · " + new Date(s.updated_at).toLocaleString()}
-              </option>
-            ))}
-          </Select>
-          <Button variant="ghost" size="sm" onClick={newChat} disabled={streaming}>
-            <Plus className="size-4" /> New chat
-          </Button>
           <div className="flex-1" />
           <IconButton
             label={showPanel ? "Hide details" : "Show details"}
