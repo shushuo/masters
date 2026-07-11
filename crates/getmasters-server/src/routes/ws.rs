@@ -63,7 +63,7 @@ fn to_server_event(ev: AgentEvent) -> (Option<ServerEvent>, bool) {
                 tool: req.tool,
                 summary: req.summary,
                 classes: req.classes.iter().map(|c| c.as_str().to_string()).collect(),
-                preview: req.preview,
+                preview: req.preview.map(|p| *p),
             }),
             false,
         ),

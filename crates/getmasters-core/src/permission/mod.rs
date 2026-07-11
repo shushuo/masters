@@ -126,8 +126,8 @@ impl PermissionGate {
             summary: summary(tool, args),
             classes: vec![class],
             // Display-only diff preview for a proposed file write. Error-isolated: it produces an
-            // `Option` and cannot change the decision below.
-            preview: file_preview(tool, args, &resolved),
+            // `Option` and cannot change the decision below. Boxed to keep `AgentEvent` small.
+            preview: file_preview(tool, args, &resolved).map(Box::new),
         };
         self.log_event(
             "approval_requested",

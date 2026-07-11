@@ -20,7 +20,8 @@ pub struct ApprovalRequest {
     pub summary: String,
     pub classes: Vec<SideEffect>,
     /// A before/after preview for a proposed file write (write-class tools). Display-only.
-    pub preview: Option<FilePreview>,
+    /// Boxed so this rarely-populated payload doesn't bloat `AgentEvent` (cloned per stream event).
+    pub preview: Option<Box<FilePreview>>,
 }
 
 /// The user's answer to an [`ApprovalRequest`].
