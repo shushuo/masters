@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   ArrowDown,
   Check,
@@ -51,6 +51,8 @@ export function Chat({ client }: { client: MastersClient }) {
   const [showPanel, setShowPanel] = useState(false);
   const [audit, setAudit] = useState<AuditEntryDto[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
+  const approvalRef = useRef<HTMLDivElement>(null);
+  const prevFocusRef = useRef<HTMLElement | null>(null);
   const { ref: scrollRef, atBottom, scrollToBottom } = useStickToBottom([turns]);
 
   async function refreshAudit(id = sessionId) {
@@ -87,6 +89,46 @@ export function Chat({ client }: { client: MastersClient }) {
     if (showPanel) refreshAudit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showPanel, sessionId]);
+
+  // Global shortcuts: Esc stops an in-flight stream; ⌘/Ctrl+N starts a new chat.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && streaming) stop();
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        if (!streaming) newChat();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streaming]);
+
+  // The approval prompt is the security-critical control: focus it when it appears,
+  // restore focus when it resolves, and keep Tab within it while a decision is pending.
+  useEffect(() => {
+    if (approval) {
+      prevFocusRef.current = document.activeElement as HTMLElement | null;
+      approvalRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    } else {
+      prevFocusRef.current?.focus?.();
+    }
+  }, [approval]);
+
+  function trapApprovalTab(e: ReactKeyboardEvent<HTMLDivElement>) {
+    if (e.key !== "Tab") return;
+    const btns = approvalRef.current?.querySelectorAll<HTMLButtonElement>("button");
+    if (!btns || btns.length === 0) return;
+    const first = btns[0];
+    const last = btns[btns.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
 
   async function newChat() {
     try {
@@ -274,7 +316,13 @@ export function Chat({ client }: { client: MastersClient }) {
         </div>
 
         {approval && (
-          <div className="border-t border-tool-border bg-tool-bg p-3 text-sm">
+          <div
+            ref={approvalRef}
+            onKeyDown={trapApprovalTab}
+            role="alertdialog"
+            aria-label="Tool approval required"
+            className="border-t border-tool-border bg-tool-bg p-3 text-sm"
+          >
             <p className="mb-2 text-text">
               Approve <Badge variant="tool">{approval.tool}</Badge> — {approval.summary}{" "}
               <span className="text-muted">[{approval.classes.join(", ")}]</span>?

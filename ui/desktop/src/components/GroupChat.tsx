@@ -179,7 +179,7 @@ export function GroupChat({
         <span className="font-medium text-text">{title ?? `Group chat · ${teamSlug}`}</span>
       </div>
       {error && <div className="px-3 py-1 text-xs text-danger">{error}</div>}
-      <div className="flex-1 space-y-2 overflow-y-auto p-3 text-sm">
+      <div className="flex-1 space-y-2 overflow-y-auto p-3 text-sm" role="log" aria-live="polite">
         {bubbles.length === 0 && (
           <div className="text-muted">
             Start with <code>@master</code>, <code>@all</code>, or no mention (the coordinator answers).
