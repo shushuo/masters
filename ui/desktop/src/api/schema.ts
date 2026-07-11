@@ -1167,6 +1167,31 @@ export interface components {
             name: string;
         };
         /**
+         * @description A before/after preview of a **proposed** (not-yet-applied) file write, attached to an
+         *     [`ServerEvent::ApprovalRequest`] so the desktop can render a diff before the user allows it.
+         *
+         *     Reconstructed in the permission gate from the grant-checked pre-image plus the tool args
+         *     (`create` → new content; `edit` → `find`/`replace` applied once; `delete` → removal). It is
+         *     **display-only**: never persisted, never logged, and its computation can never change the
+         *     authorization verdict. `omitted` is set (with `before`/`after` = `None`) when the target is
+         *     binary or over the size cap.
+         */
+        FilePreview: {
+            /** Format: int32 */
+            added: number;
+            /** @description Proposed content (`None` for `delete` or when omitted). */
+            after?: string | null;
+            /** @description Prior on-disk content (`None` when the file didn't exist, or was unreadable/binary/omitted). */
+            before?: string | null;
+            /** @description True when the preview was skipped (binary or over the size cap); `before`/`after` are `None`. */
+            omitted: boolean;
+            /** @description `"create" | "edit" | "delete"`. */
+            op: string;
+            path: string;
+            /** Format: int32 */
+            removed: number;
+        };
+        /**
          * @description Access level a folder grant confers.
          * @enum {string}
          */
@@ -1495,6 +1520,7 @@ export interface components {
         } | {
             /** @description Side-effect classes involved (e.g. `["write"]`). */
             classes: string[];
+            preview?: null | components["schemas"]["FilePreview"];
             request_id: string;
             summary: string;
             tool: string;

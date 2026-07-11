@@ -57,12 +57,17 @@ export interface DaemonConn {
   token: string;
 }
 
+/** A before/after preview of a proposed file write, shown in the approval bar. */
+export type FilePreview = components["schemas"]["FilePreview"];
+
 /** A pending approval surfaced during a run. */
 export interface PendingApproval {
   requestId: string;
   tool: string;
   summary: string;
   classes: string[];
+  /** Present for write-class tools: a diff preview of the proposed change. */
+  preview?: FilePreview | null;
 }
 
 /** Callbacks for a streaming run. */
@@ -781,6 +786,7 @@ export class MastersClient {
             tool: event.tool,
             summary: event.summary,
             classes: event.classes,
+            preview: event.preview,
           });
           break;
         case "message_complete":

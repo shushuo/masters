@@ -13,6 +13,16 @@ is out of scope. Nothing here changes the architectural invariants — the deskt
 dependency-light, bundle-only verified (`tsc --noEmit` + `pnpm build`), and every visual decision
 must keep the trust surfaces (gating, audit, revert) first-class.
 
+> **Implementation status (P0 + P1 landed).** The §7 roadmap's P0 and P1 slices are now
+> implemented on the desktop; §7.9 marks each item. Highlights: self-hosted Inter + AA-contrast
+> tokens + a single-source dark palette; a Markdown transcript with collapsible tool-step cards,
+> stick-to-bottom, and a multiline composer; keyboard shortcuts + an approval focus-trap +
+> live-region a11y; hash routing with a sidebar session list (and a `DELETE /sessions/{id}`
+> endpoint); and **diff-in-approval** — the gate now attaches a display-only before/after
+> `FilePreview` to write approvals (proto `FilePreview`, `permission::file_preview`), rendered as a
+> diff card in the approval bar. Still open: the P1 live *plan* panel (needs a server-side plan
+> event) and P2 (command palette, per-master avatar identity).
+
 ---
 
 ## 1. Design principles (as built)
@@ -386,20 +396,22 @@ Group chat is the product's most distinctive surface; make authorship instantly 
 
 ### 7.9 Prioritized roadmap
 
-| Pri | Item | Files touched | New deps |
-|---|---|---|---|
-| P0 | Markdown transcript + tool-step cards + stick-to-bottom + multiline composer (§7.3) | Chat, GroupChat, new `ui/Composer`, `ui/ToolStep`, `ui/Markdown` | 1–2 small (`react-markdown`, highlighter) |
-| P0 | Font shipping, dark-palette de-dup, warning/info tokens, motion/focus tokens (§7.4) | `index.css`, `tailwind.config.js`, `index.html` | none |
-| P0 | AA contrast fixes + `aria-live` + Esc/⌘N (§7.5) | `index.css`, Chat, GroupChat | none |
-| P1 | Sidebar session list + hash routing + breadcrumbs + empty states (§7.6) | App, Sidebar, Chat, screens | none |
-| P1 | Live run panel (plan/activity/audit) + diff-in-approval (§7.7) | Chat panel; small daemon diff endpoint | none |
-| P2 | Command palette (§7.6) | new `ui/Palette` | none (dependency-light build) |
-| P2 | Master identity system (§7.8) | GroupChat, `ui/Avatar` | none |
+| Pri | Item | Status | Files touched | New deps |
+|---|---|---|---|---|
+| P0 | Markdown transcript + tool-step cards + stick-to-bottom + multiline composer (§7.3) | **Done** | Chat, GroupChat, `ui/Composer`, `ui/ToolStep`, `ui/Markdown`, `lib/useStickToBottom`, `lib/clipboard` | `react-markdown`, `remark-gfm` |
+| P0 | Font shipping, dark-palette de-dup, warning/info tokens, motion/focus tokens (§7.4) | **Done** | `index.css`, `tailwind.config.js`, `lib/theme.ts`, `public/fonts/`, `Badge` | none |
+| P0 | AA contrast fixes + `aria-live` + Esc/⌘N + approval focus-trap (§7.5) | **Done** | `index.css`, Chat, GroupChat, Sidebar | none |
+| P1 | Sidebar session list + hash routing + `DELETE /sessions/{id}` (§7.6) | **Done** | App, Sidebar, Chat, `lib/useHashRoute`, `lib/useSessions`, `routes/sessions.rs` | none |
+| P1 | Diff-in-approval (§7.7) | **Done** | proto `FilePreview`, `permission/mod.rs` `file_preview`, `routes/ws.rs`, `openapi.rs`, client, Chat `DiffPreview` | none |
+| P1 | Live *plan* panel (§7.7) | Deferred — needs a server-side plan event (the event log has no plan rows); live activity is already inline via tool-step cards | — | — |
+| P1 | Breadcrumbs + action-forward empty states (§7.6) | Deferred (cosmetic) | screens | none |
+| P2 | Command palette (§7.6) | Not started | new `ui/Palette` | none |
+| P2 | Master identity system (§7.8) | Not started | GroupChat, `ui/Avatar` | none |
 
-Everything stays bundle-only verifiable (`tsc --noEmit` + `pnpm build`); the only server-side
-ask in the whole plan is the §7.7 diff surface. No enhancement weakens a trust surface, and
-several (tool cards, run panel, diff preview) make the gate *more* legible — the direction the
-ADRs point.
+Everything stays bundle-only verifiable (`tsc --noEmit` + `pnpm build`); the one server-side
+change (the §7.7 diff surface + the session-delete route) is additive and serde-`default`
+backward-compatible. No enhancement weakens a trust surface, and several (tool cards, the diff
+preview) make the gate *more* legible — the direction the ADRs point.
 
 ---
 

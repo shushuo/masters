@@ -9,7 +9,12 @@ import {
   Undo2,
   X,
 } from "lucide-react";
-import { MastersClient, type AuditEntryDto, type PendingApproval } from "../api/client";
+import {
+  MastersClient,
+  type AuditEntryDto,
+  type FilePreview,
+  type PendingApproval,
+} from "../api/client";
 import {
   Badge,
   Button,
@@ -32,6 +37,59 @@ type Turn =
   | { kind: "user"; content: string }
   | { kind: "assistant"; content: string }
   | { kind: "tool"; step: ToolStepData };
+
+const MAX_DIFF_LINES = 40;
+
+/** A compact before/after diff for a proposed file write, shown in the approval bar. */
+function DiffPreview({ preview }: { preview: FilePreview }) {
+  if (preview.omitted) {
+    return (
+      <div className="mb-2 rounded border border-border bg-bg px-2 py-1 text-xs text-muted">
+        Binary or large file — preview unavailable.
+      </div>
+    );
+  }
+  const before = preview.before ? preview.before.split("\n") : [];
+  const after = preview.after ? preview.after.split("\n") : [];
+  const beforeSet = new Set(before);
+  const afterSet = new Set(after);
+  const removed = before.filter((l) => !afterSet.has(l));
+  const added = after.filter((l) => !beforeSet.has(l));
+  const rows = [
+    ...removed.map((text) => ({ sign: "-" as const, text })),
+    ...added.map((text) => ({ sign: "+" as const, text })),
+  ];
+  const shown = rows.slice(0, MAX_DIFF_LINES);
+
+  return (
+    <div className="mb-2 overflow-hidden rounded border border-border bg-bg text-xs">
+      <div className="flex items-center gap-2 border-b border-border px-2 py-1">
+        <span className="truncate font-mono text-muted">{preview.path}</span>
+        <span className="ml-auto shrink-0 font-mono">
+          <span className="text-success">+{preview.added}</span>{" "}
+          <span className="text-danger">−{preview.removed}</span>
+        </span>
+      </div>
+      <pre className="max-h-48 overflow-auto p-2 font-mono text-[11px] leading-snug">
+        {shown.map((r, i) => (
+          <div
+            key={i}
+            className={
+              r.sign === "+"
+                ? "bg-success/10 text-success"
+                : "bg-danger/10 text-danger"
+            }
+          >
+            {r.sign} {r.text}
+          </div>
+        ))}
+        {rows.length > MAX_DIFF_LINES && (
+          <div className="text-faint">… {rows.length - MAX_DIFF_LINES} more changed lines</div>
+        )}
+      </pre>
+    </div>
+  );
+}
 
 /**
  * The single-agent chat pane. Controlled by App: the active `sessionId` and `streaming`
@@ -290,6 +348,7 @@ export function Chat({
               Approve <Badge variant="tool">{approval.tool}</Badge> — {approval.summary}{" "}
               <span className="text-muted">[{approval.classes.join(", ")}]</span>?
             </p>
+            {approval.preview && <DiffPreview preview={approval.preview} />}
             <div className="flex gap-2">
               <Button variant="primary" size="sm" onClick={() => decide("allow")}>
                 <Check className="size-3.5" /> Allow once

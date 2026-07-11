@@ -8,7 +8,7 @@ use getmasters_proto::{
     CatalogStatusDto, ClientCommand, ConfigCheckDto, ConfigCheckItem, ConnectorDto,
     CreateConnectorRequest, CreateProjectRequest, CreateScheduleRequest, CreateSessionRequest,
     CreateTeamRequest, DeckDto, DefaultMasterDto, DocumentDto, EmailSettingsDto,
-    EmailSettingsUpdate, EnvironmentDto, ErrorDto, EventDto, ExtensionDto, FolderGrant,
+    EmailSettingsUpdate, EnvironmentDto, ErrorDto, EventDto, ExtensionDto, FilePreview, FolderGrant,
     GroupMasterErrorDto, GroupPostRequest, GroupPostResult, HealthDto, KnowledgeStatusDto,
     MasterDto, MasterRunResult, MasterSummaryDto, MemoryDto, MessageDto, ProjectDto,
     ProviderStateDto, ProvidersDto, QuickChatRequest, RankedMasterDto, RecipeDto, RecipeParamDto,
@@ -166,6 +166,7 @@ use getmasters_proto::{
         // WS envelopes have no REST path but are part of the contract, so the TS client gets types.
         ClientCommand,
         ServerEvent,
+        FilePreview,
     )),
     tags(
         (name = "system", description = "Health and metadata"),

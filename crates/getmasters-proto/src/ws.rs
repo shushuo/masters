@@ -58,6 +58,10 @@ pub enum ServerEvent {
         summary: String,
         /// Side-effect classes involved (e.g. `["write"]`).
         classes: Vec<String>,
+        /// A before/after preview of a proposed file write (write-class tools only). Optional and
+        /// `#[serde(default)]` for backward-compat; display-only — see [`FilePreview`].
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        preview: Option<FilePreview>,
     },
     /// The assistant turn finished and was persisted under `message_id`.
     MessageComplete { message_id: String },
@@ -104,4 +108,27 @@ pub enum ServerEvent {
     },
     /// Every round finished — the group turn is done (terminal).
     GroupComplete,
+}
+
+/// A before/after preview of a **proposed** (not-yet-applied) file write, attached to an
+/// [`ServerEvent::ApprovalRequest`] so the desktop can render a diff before the user allows it.
+///
+/// Reconstructed in the permission gate from the grant-checked pre-image plus the tool args
+/// (`create` → new content; `edit` → `find`/`replace` applied once; `delete` → removal). It is
+/// **display-only**: never persisted, never logged, and its computation can never change the
+/// authorization verdict. `omitted` is set (with `before`/`after` = `None`) when the target is
+/// binary or over the size cap.
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct FilePreview {
+    pub path: String,
+    /// `"create" | "edit" | "delete"`.
+    pub op: String,
+    /// Prior on-disk content (`None` when the file didn't exist, or was unreadable/binary/omitted).
+    pub before: Option<String>,
+    /// Proposed content (`None` for `delete` or when omitted).
+    pub after: Option<String>,
+    pub added: u32,
+    pub removed: u32,
+    /// True when the preview was skipped (binary or over the size cap); `before`/`after` are `None`.
+    pub omitted: bool,
 }

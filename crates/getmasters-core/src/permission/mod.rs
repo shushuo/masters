@@ -16,7 +16,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use getmasters_proto::SideEffect;
+use getmasters_proto::{FilePreview, SideEffect};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -125,6 +125,9 @@ impl PermissionGate {
             tool: tool.to_string(),
             summary: summary(tool, args),
             classes: vec![class],
+            // Display-only diff preview for a proposed file write. Error-isolated: it produces an
+            // `Option` and cannot change the decision below.
+            preview: file_preview(tool, args, &resolved),
         };
         self.log_event(
             "approval_requested",
@@ -202,6 +205,91 @@ impl PermissionGate {
             tracing::warn!(error = %e, "failed to write audit log");
         }
     }
+}
+
+/// Upper bound on the file bytes we'll read to build an approval preview — a big or binary file
+/// is reported as `omitted` rather than streamed to the UI.
+const PREVIEW_MAX_BYTES: u64 = 128 * 1024;
+
+/// Truncate preview text at a UTF-8 boundary so a huge write doesn't bloat the approval event.
+fn clamp_preview(mut s: String) -> String {
+    const CAP: usize = PREVIEW_MAX_BYTES as usize;
+    if s.len() > CAP {
+        let mut end = CAP;
+        while !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        s.truncate(end);
+        s.push_str("\n… (truncated)");
+    }
+    s
+}
+
+/// Build a before/after [`FilePreview`] for a **proposed** write-class tool call, from the
+/// grant-checked target path (`resolved`) plus the tool args. Returns `None` for non-write tools
+/// or when there's nothing meaningful to show. This is **display-only**: it is a pure `Option`
+/// producer with no `?` escaping into the caller's decision, so it can never change the verdict.
+/// Reads are bounded ([`PREVIEW_MAX_BYTES`]); binary/oversize/unreadable targets are `omitted`.
+fn file_preview(tool: &str, args: &Value, resolved: &[PathBuf]) -> Option<FilePreview> {
+    let op = tool.rsplit('.').next().unwrap_or(tool);
+    if !matches!(op, "create" | "edit" | "delete") {
+        return None;
+    }
+    let target = resolved.first()?;
+    let path = target.to_string_lossy().into_owned();
+    let omitted = || FilePreview {
+        path: path.clone(),
+        op: op.to_string(),
+        before: None,
+        after: None,
+        added: 0,
+        removed: 0,
+        omitted: true,
+    };
+
+    let existed = target.exists();
+    if existed {
+        if let Ok(meta) = std::fs::metadata(target) {
+            if meta.len() > PREVIEW_MAX_BYTES {
+                return Some(omitted());
+            }
+        }
+    }
+    // Non-UTF8 (binary) or unreadable existing file → skip rather than mangle.
+    let before = if existed {
+        match std::fs::read_to_string(target) {
+            Ok(b) => Some(b),
+            Err(_) => return Some(omitted()),
+        }
+    } else {
+        None
+    };
+
+    let after = match op {
+        // A create with no content string carries no useful preview.
+        "create" => Some(args.get("content").and_then(Value::as_str)?.to_string()),
+        // Mirror the Files `edit` tool: replace the first occurrence.
+        "edit" => {
+            let find = args.get("find").and_then(Value::as_str)?;
+            let replace = args.get("replace").and_then(Value::as_str).unwrap_or("");
+            before.as_deref().map(|b| b.replacen(find, replace, 1))
+        }
+        _ => None, // delete: after is empty
+    };
+
+    let before = before.map(clamp_preview);
+    let after = after.map(clamp_preview);
+    let (added, removed) =
+        crate::revision::diff_counts(before.as_deref(), after.as_deref().unwrap_or(""));
+    Some(FilePreview {
+        path,
+        op: op.to_string(),
+        before,
+        after,
+        added,
+        removed,
+        omitted: false,
+    })
 }
 
 /// A short human summary of a tool call for approval prompts / events.
@@ -286,5 +374,50 @@ mod tests {
             .authorize("files.read", &json!({ "path": f.to_str().unwrap() }))
             .await;
         assert!(matches!(v, Authorized::Allowed));
+    }
+
+    #[test]
+    fn file_preview_create_edit_and_skips() {
+        let (dir, _gs) = grant_dir();
+        let target = dir.join("new.txt");
+
+        // create: after = content, before = None, counts from the new lines.
+        let p = file_preview(
+            "files.create",
+            &json!({ "path": "new.txt", "content": "hello\nworld" }),
+            std::slice::from_ref(&target),
+        )
+        .expect("create preview");
+        assert!(!p.omitted);
+        assert_eq!(p.op, "create");
+        assert_eq!(p.before, None);
+        assert_eq!(p.after.as_deref(), Some("hello\nworld"));
+        assert_eq!(p.added, 2);
+
+        // edit: replacen on the on-disk pre-image.
+        std::fs::write(&target, "hello\nworld").unwrap();
+        let p = file_preview(
+            "files.edit",
+            &json!({ "path": "new.txt", "find": "world", "replace": "there" }),
+            std::slice::from_ref(&target),
+        )
+        .expect("edit preview");
+        assert_eq!(p.before.as_deref(), Some("hello\nworld"));
+        assert_eq!(p.after.as_deref(), Some("hello\nthere"));
+
+        // non-write tools carry no preview.
+        assert!(file_preview("files.read", &json!({ "path": "new.txt" }), std::slice::from_ref(&target)).is_none());
+
+        // oversize existing files are omitted (before/after withheld).
+        let big = dir.join("big.txt");
+        std::fs::write(&big, vec![b'x'; (PREVIEW_MAX_BYTES + 1) as usize]).unwrap();
+        let p = file_preview(
+            "files.edit",
+            &json!({ "path": "big.txt", "find": "x", "replace": "y" }),
+            std::slice::from_ref(&big),
+        )
+        .expect("oversize preview");
+        assert!(p.omitted);
+        assert!(p.before.is_none() && p.after.is_none());
     }
 }
