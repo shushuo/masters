@@ -406,7 +406,12 @@ mod tests {
         assert_eq!(p.after.as_deref(), Some("hello\nthere"));
 
         // non-write tools carry no preview.
-        assert!(file_preview("files.read", &json!({ "path": "new.txt" }), std::slice::from_ref(&target)).is_none());
+        assert!(file_preview(
+            "files.read",
+            &json!({ "path": "new.txt" }),
+            std::slice::from_ref(&target)
+        )
+        .is_none());
 
         // oversize existing files are omitted (before/after withheld).
         let big = dir.join("big.txt");
