@@ -3,6 +3,26 @@
 @tailwind utilities;
 
 /*
+ * Inter, self-hosted (no CDN — the desktop must render offline). Latin variable
+ * cut; `font-display: swap` shows the system fallback until it loads. The stack in
+ * `--font-sans` keeps that fallback identical, so there is no per-machine drift.
+ */
+@font-face {
+  font-family: "Inter var";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/InterVariable.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter var";
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/InterVariable-Italic.woff2") format("woff2");
+}
+
+/*
  * Design tokens — "Panda" brand system, derived from the logo
  * (assets/logo.svg): a warm cream face (#f3f3e7), a deep slate body
  * (#445159), and muted sage-teal highlights (ears / eyes). All UI color
@@ -13,13 +33,18 @@
  *   cream  #f3f3e7  → light canvas / surfaces, dark text
  *   slate  #445159  → light accent / dark canvas, brand body
  *   sage   #7ea39c  → secondary highlight, dark accent
+ *
+ * Theme mechanics: `lib/theme.ts` always resolves the preference (system/light/
+ * dark) to an explicit `data-theme` on <html> before first paint, so the dark
+ * palette lives in exactly ONE block below — no hand-synced media-query copy.
  */
 :root {
-  /* Let native controls (inputs, checkboxes, scrollbars) follow the OS theme. */
-  color-scheme: light dark;
+  /* Resolved eagerly to a concrete scheme by theme.ts; light is the base. */
+  color-scheme: light;
 
   /* typography */
   --font-sans: "Inter var", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-sans);
 
   /* surfaces — warm cream */
   --color-bg: #faf9f1; /* app canvas (a touch lighter than the logo cream) */
@@ -31,7 +56,7 @@
   /* text — deep slate */
   --color-text: #313c42; /* logo slate, darkened for body copy */
   --color-text-muted: #5f6c72; /* secondary labels */
-  --color-text-faint: #8c959a; /* timestamps, slugs */
+  --color-text-faint: #6d787e; /* timestamps, slugs — AA on bg (4.6:1) */
 
   /* accent — brand slate */
   --color-accent: #445159;
@@ -45,7 +70,7 @@
 
   /* semantic state — earthy, tuned to the cream canvas */
   --color-tool-bg: #f4efdf;
-  --color-tool-fg: #8a6d2f;
+  --color-tool-fg: #7d6229; /* AA on tool-bg (4.9:1) */
   --color-tool-border: #e6dcbf;
   --color-success: #4f7d5e;
   --color-success-hover: #426a4f;
@@ -53,6 +78,14 @@
   --color-danger-hover: #9d453e;
   --color-danger-bg: #f6e9e6;
   --color-danger-fg: #9d453e;
+  /* warning — amber, deliberately distinct from the earthy `tool` tint */
+  --color-warning: #a6741a;
+  --color-warning-bg: #fbf1dc;
+  --color-warning-fg: #8a5e12;
+  /* info — sage-tinted, for passive notices */
+  --color-info: #3f6b64;
+  --color-info-bg: #e6efec;
+  --color-info-fg: #33564f;
 
   /* radii — softened to echo the rounded mark */
   --radius-sm: 7px;
@@ -62,54 +95,19 @@
   /* shadows (soft, warm-tinted) */
   --shadow-sm: 0 1px 2px rgba(49, 60, 66, 0.05), 0 1px 1px rgba(49, 60, 66, 0.04);
   --shadow: 0 2px 8px rgba(49, 60, 66, 0.08), 0 1px 2px rgba(49, 60, 66, 0.05);
+
+  /* motion & focus */
+  --duration-fast: 100ms;
+  --duration-base: 150ms;
+  --focus-ring: 0 0 0 2px var(--color-accent);
 }
 
 /*
  * Dark palette — deep slate canvas, warm cream text, sage-teal accent (slate
  * would vanish against a slate-dark canvas, so the accent shifts to sage).
- * Applied in two cases so the theme can both follow the OS and be pinned by
- * the in-app toggle:
- *   1. OS reports dark AND the user hasn't forced light (`:not([data-theme="light"])`)
- *   2. The user explicitly picked dark (`[data-theme="dark"]`)
- * Kept in sync with the duplicated block below by hand.
+ * Defined ONCE: theme.ts stamps `data-theme="dark"` for both the pinned-dark
+ * and system-follows-dark cases, so there is no media-query duplicate to sync.
  */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-
-    --color-bg: #1a2125;
-    --color-surface: #212a2f;
-    --color-surface-2: #2a343a;
-    --color-border: #313c42;
-    --color-border-strong: #3d4951;
-
-    --color-text: #eceadd;
-    --color-text-muted: #9aa6a8;
-    --color-text-faint: #6c777c;
-
-    --color-accent: #8fb3ad;
-    --color-accent-hover: #a6c6c1;
-    --color-accent-fg: #1a2125;
-    --color-accent-subtle: #28383a;
-
-    --color-brand: #8fb3ad;
-    --color-brand-sage: #8fb3ad;
-
-    --color-tool-bg: #2b2a1d;
-    --color-tool-fg: #d6bd84;
-    --color-tool-border: #3b3826;
-    --color-success: #5fae7d;
-    --color-success-hover: #6fbf8c;
-    --color-danger: #d97c70;
-    --color-danger-hover: #e2978d;
-    --color-danger-bg: #2e1e1c;
-    --color-danger-fg: #e2978d;
-
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
-  }
-}
-
 :root[data-theme="dark"] {
   color-scheme: dark;
 
@@ -121,7 +119,7 @@
 
   --color-text: #eceadd;
   --color-text-muted: #9aa6a8;
-  --color-text-faint: #6c777c;
+  --color-text-faint: #8a969b; /* AA on bg (4.6:1) */
 
   --color-accent: #8fb3ad;
   --color-accent-hover: #a6c6c1;
@@ -140,14 +138,32 @@
   --color-danger-hover: #e2978d;
   --color-danger-bg: #2e1e1c;
   --color-danger-fg: #e2978d;
+  --color-warning: #e0b155;
+  --color-warning-bg: #302a1a;
+  --color-warning-fg: #e6c67e;
+  --color-info: #8fb3ad;
+  --color-info-bg: #1f2c2b;
+  --color-info-fg: #a9cfc9;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
 }
 
-/* Pinned light: force the light palette even when the OS is dark. */
+/* Pinned light: theme.ts sets this for an explicit light choice; base tokens apply. */
 :root[data-theme="light"] {
   color-scheme: light;
+}
+
+/* Respect reduced-motion globally — one rule, all components. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 html,

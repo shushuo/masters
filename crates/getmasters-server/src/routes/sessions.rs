@@ -56,6 +56,24 @@ pub async fn revert(
 }
 
 #[utoipa::path(
+    delete,
+    path = "/sessions/{id}",
+    operation_id = "delete_session",
+    params(("id" = String, Path, description = "Session id")),
+    responses((status = 204, description = "Session deleted")),
+    tag = "sessions"
+)]
+pub async fn delete(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let store = state.agent.store();
+    store.get_session(&id)?; // 404 if the session is unknown
+    store.delete_session(&id)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
     get,
     path = "/sessions/{id}/audit",
     operation_id = "list_audit",

@@ -113,18 +113,25 @@ pub fn revert_last(store: &Store, session_id: &str) -> Result<String, String> {
     Ok(result)
 }
 
-/// A minimal line-diff summary (added/removed counts) for surfacing an edit preview.
-pub fn diff_summary(prior: Option<&str>, next: &str) -> String {
+/// Minimal line-diff counts `(added, removed)` between an optional pre-image and the next
+/// content — the raw signal behind [`diff_summary`] and the approval-prompt [`FilePreview`].
+pub fn diff_counts(prior: Option<&str>, next: &str) -> (u32, u32) {
     let prior_lines: Vec<&str> = prior.map(|p| p.lines().collect()).unwrap_or_default();
     let next_lines: Vec<&str> = next.lines().collect();
     let removed = prior_lines
         .iter()
         .filter(|l| !next_lines.contains(l))
-        .count();
+        .count() as u32;
     let added = next_lines
         .iter()
         .filter(|l| !prior_lines.contains(l))
-        .count();
+        .count() as u32;
+    (added, removed)
+}
+
+/// A minimal line-diff summary (added/removed counts) for surfacing an edit preview.
+pub fn diff_summary(prior: Option<&str>, next: &str) -> String {
+    let (added, removed) = diff_counts(prior, next);
     format!("+{added} -{removed} lines")
 }
 

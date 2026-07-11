@@ -446,6 +446,7 @@ The docs are numbered and meant to be read in order; later docs depend on earlie
 - `docs/07-ux-flows.md` — screens and flows
 - `docs/08-roadmap.md` — phased plan (Phase 0 → 4) and how features map to phases
 - `docs/09-projects-masters.md` — Project as a context container + Masters (persona-over-Skill) + Master Teams
+- `docs/10-ui-design.md` — desktop UI design system as implemented (tokens/layout/components/interaction) + Manus/Claude-Cowork benchmark + prioritized enhancement plan
 - `docs/adr/0001..0014` — the binding decisions; treat these as authoritative (0006–0009 are the Hermes-informed refinements; 0010–0012 are the WorkBuddy-informed Project/Master-Team additions, 0012 = the multi-master group-chat communication model; 0013 = per-master model selection; 0014 = external ACP master agents)
 
 Diagrams are **mermaid** embedded in markdown.

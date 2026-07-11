@@ -8,15 +8,16 @@ use getmasters_proto::{
     CatalogStatusDto, ClientCommand, ConfigCheckDto, ConfigCheckItem, ConnectorDto,
     CreateConnectorRequest, CreateProjectRequest, CreateScheduleRequest, CreateSessionRequest,
     CreateTeamRequest, DeckDto, DefaultMasterDto, DocumentDto, EmailSettingsDto,
-    EmailSettingsUpdate, EnvironmentDto, ErrorDto, EventDto, ExtensionDto, FolderGrant,
-    GroupMasterErrorDto, GroupPostRequest, GroupPostResult, HealthDto, KnowledgeStatusDto,
-    MasterDto, MasterRunResult, MasterSummaryDto, MemoryDto, MessageDto, ProjectDto,
-    ProviderStateDto, ProvidersDto, QuickChatRequest, RankedMasterDto, RecipeDto, RecipeParamDto,
-    RecipeRunResult, RecipeSummaryDto, RevertResult, RouteBriefRequest, RouteResultDto,
-    RunMasterRequest, RunRecipeRequest, RunTeamRequest, ScheduleDto, ScheduledRunDto, SecretUpdate,
-    SendMessageRequest, ServerEvent, SessionDto, SetConnectorEnabledRequest, SetExtensionRequest,
-    SetInstructionsRequest, SetScheduleRequest, SettingsDto, SettingsUpdate, SkillDto,
-    StudyPlanDto, TeamBundle, TeamDto, TeamRunResult, TeamSummaryDto,
+    EmailSettingsUpdate, EnvironmentDto, ErrorDto, EventDto, ExtensionDto, FilePreview,
+    FolderGrant, GroupMasterErrorDto, GroupPostRequest, GroupPostResult, HealthDto,
+    KnowledgeStatusDto, MasterDto, MasterRunResult, MasterSummaryDto, MemoryDto, MessageDto,
+    ProjectDto, ProviderStateDto, ProvidersDto, QuickChatRequest, RankedMasterDto, RecipeDto,
+    RecipeParamDto, RecipeRunResult, RecipeSummaryDto, RevertResult, RouteBriefRequest,
+    RouteResultDto, RunMasterRequest, RunRecipeRequest, RunTeamRequest, ScheduleDto,
+    ScheduledRunDto, SecretUpdate, SendMessageRequest, ServerEvent, SessionDto,
+    SetConnectorEnabledRequest, SetExtensionRequest, SetInstructionsRequest, SetScheduleRequest,
+    SettingsDto, SettingsUpdate, SkillDto, StudyPlanDto, TeamBundle, TeamDto, TeamRunResult,
+    TeamSummaryDto,
 };
 
 #[derive(OpenApi)]
@@ -26,6 +27,7 @@ use getmasters_proto::{
         crate::routes::health::health,
         crate::routes::sessions::create,
         crate::routes::sessions::list,
+        crate::routes::sessions::delete,
         crate::routes::sessions::list_audit,
         crate::routes::sessions::list_events,
         crate::routes::sessions::revert,
@@ -165,6 +167,7 @@ use getmasters_proto::{
         // WS envelopes have no REST path but are part of the contract, so the TS client gets types.
         ClientCommand,
         ServerEvent,
+        FilePreview,
     )),
     tags(
         (name = "system", description = "Health and metadata"),

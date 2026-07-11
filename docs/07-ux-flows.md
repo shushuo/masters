@@ -2,6 +2,8 @@
 
 This document sketches Masters's key screens and the flows that connect them. It is intentionally
 implementation-agnostic (wireframe-level), describing structure and interaction, not pixel design.
+The pixel-level design system as implemented (tokens, components, interaction principles, benchmark
+comparison, enhancement plan) lives in `docs/10-ui-design.md`.
 
 ## 1. Information architecture
 

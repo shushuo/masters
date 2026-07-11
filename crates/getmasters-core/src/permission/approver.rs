@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use getmasters_proto::SideEffect;
+use getmasters_proto::{FilePreview, SideEffect};
 use tokio::sync::oneshot;
 
 /// A pending request for the user to approve a side-effecting tool call.
@@ -19,6 +19,9 @@ pub struct ApprovalRequest {
     pub tool: String,
     pub summary: String,
     pub classes: Vec<SideEffect>,
+    /// A before/after preview for a proposed file write (write-class tools). Display-only.
+    /// Boxed so this rarely-populated payload doesn't bloat `AgentEvent` (cloned per stream event).
+    pub preview: Option<Box<FilePreview>>,
 }
 
 /// The user's answer to an [`ApprovalRequest`].
@@ -170,6 +173,7 @@ mod tests {
             tool: "files.create".into(),
             summary: "create a.txt".into(),
             classes: vec![SideEffect::Write],
+            preview: None,
         };
         assert_eq!(a.decide(req).await, ApprovalDecision::Allow);
     }
@@ -189,6 +193,7 @@ mod tests {
             tool: "files.create".into(),
             summary: "x".into(),
             classes: vec![SideEffect::Write],
+            preview: None,
         };
         // The decision is already available (e.g. a fast client); decide() emits then returns it.
         registry.resolve("r9", ApprovalDecision::AlwaysTool);
@@ -216,6 +221,7 @@ mod tests {
             tool: "files.create".into(),
             summary: "x".into(),
             classes: vec![SideEffect::Write],
+            preview: None,
         };
         assert_eq!(approver.decide(req).await, ApprovalDecision::Deny);
         // The waiter was cancelled — a late resolve lands in `early` and is dropped by cancel,

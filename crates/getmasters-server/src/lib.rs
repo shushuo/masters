@@ -41,6 +41,10 @@ pub fn build_app(state: AppState) -> Router {
             "/sessions/{id}/messages",
             get(routes::messages::list).post(routes::messages::send),
         )
+        .route(
+            "/sessions/{id}",
+            axum::routing::delete(routes::sessions::delete),
+        )
         .route("/sessions/{id}/ws", get(routes::ws::handler))
         .route("/sessions/{id}/revert", post(routes::sessions::revert))
         .route("/sessions/{id}/audit", get(routes::sessions::list_audit))

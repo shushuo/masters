@@ -57,12 +57,17 @@ export interface DaemonConn {
   token: string;
 }
 
+/** A before/after preview of a proposed file write, shown in the approval bar. */
+export type FilePreview = components["schemas"]["FilePreview"];
+
 /** A pending approval surfaced during a run. */
 export interface PendingApproval {
   requestId: string;
   tool: string;
   summary: string;
   classes: string[];
+  /** Present for write-class tools: a diff preview of the proposed change. */
+  preview?: FilePreview | null;
 }
 
 /** Callbacks for a streaming run. */
@@ -80,8 +85,14 @@ export interface StreamHandlers {
   onMasterDelta?: (round: number, author: string, text: string) => void;
   onMasterComplete?: (round: number, author: string, messageId: string) => void;
   onMasterError?: (round: number, author: string, message: string) => void;
-  onMasterToolCall?: (round: number, author: string, tool: string, summary: string) => void;
-  onMasterToolResult?: (round: number, author: string, summary: string, isError: boolean) => void;
+  onMasterToolCall?: (round: number, author: string, id: string, tool: string, summary: string) => void;
+  onMasterToolResult?: (
+    round: number,
+    author: string,
+    id: string,
+    summary: string,
+    isError: boolean,
+  ) => void;
   onGroupComplete?: () => void;
 }
 
@@ -120,6 +131,15 @@ export class MastersClient {
     const res = await fetch(`${this.base()}/sessions`, { headers: this.headers() });
     if (!res.ok) throw new Error(`listSessions failed: ${res.status}`);
     return res.json();
+  }
+
+  /** Delete a chat session (and its messages/events). */
+  async deleteSession(sessionId: string): Promise<void> {
+    const res = await fetch(`${this.base()}/sessions/${sessionId}`, {
+      method: "DELETE",
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`deleteSession failed: ${res.status}`);
   }
 
   async listMessages(sessionId: string): Promise<MessageDto[]> {
@@ -766,6 +786,7 @@ export class MastersClient {
             tool: event.tool,
             summary: event.summary,
             classes: event.classes,
+            preview: event.preview,
           });
           break;
         case "message_complete":
@@ -789,10 +810,16 @@ export class MastersClient {
           handlers.onMasterError?.(event.round, event.author, event.message);
           break;
         case "master_tool_call":
-          handlers.onMasterToolCall?.(event.round, event.author, event.tool, event.summary);
+          handlers.onMasterToolCall?.(event.round, event.author, event.id, event.tool, event.summary);
           break;
         case "master_tool_result":
-          handlers.onMasterToolResult?.(event.round, event.author, event.summary, event.is_error);
+          handlers.onMasterToolResult?.(
+            event.round,
+            event.author,
+            event.id,
+            event.summary,
+            event.is_error,
+          );
           break;
         case "group_complete":
           handlers.onGroupComplete?.();

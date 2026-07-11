@@ -1,23 +1,31 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
+  ArrowDown,
   Check,
-  CircleAlert,
   PanelRight,
-  Plus,
   SendHorizontal,
   ShieldCheck,
   Square,
   Undo2,
-  Wrench,
   X,
 } from "lucide-react";
 import {
   MastersClient,
   type AuditEntryDto,
+  type FilePreview,
   type PendingApproval,
-  type SessionDto,
 } from "../api/client";
-import { Badge, Button, IconButton, Input, PandaMark, Select } from "./ui";
+import {
+  Badge,
+  Button,
+  Composer,
+  IconButton,
+  Markdown,
+  PandaMark,
+  ToolStep,
+  type ToolStepData,
+} from "./ui";
+import { useStickToBottom } from "../lib/useStickToBottom";
 
 const DECISION_VARIANT: Record<string, "neutral" | "success" | "danger"> = {
   auto: "neutral",
@@ -25,23 +33,92 @@ const DECISION_VARIANT: Record<string, "neutral" | "success" | "danger"> = {
   denied: "danger",
 };
 
-interface Turn {
-  role: "user" | "assistant" | "tool";
-  content: string;
-  isError?: boolean;
+type Turn =
+  | { kind: "user"; content: string }
+  | { kind: "assistant"; content: string }
+  | { kind: "tool"; step: ToolStepData };
+
+const MAX_DIFF_LINES = 40;
+
+/** A compact before/after diff for a proposed file write, shown in the approval bar. */
+function DiffPreview({ preview }: { preview: FilePreview }) {
+  if (preview.omitted) {
+    return (
+      <div className="mb-2 rounded border border-border bg-bg px-2 py-1 text-xs text-muted">
+        Binary or large file — preview unavailable.
+      </div>
+    );
+  }
+  const before = preview.before ? preview.before.split("\n") : [];
+  const after = preview.after ? preview.after.split("\n") : [];
+  const beforeSet = new Set(before);
+  const afterSet = new Set(after);
+  const removed = before.filter((l) => !afterSet.has(l));
+  const added = after.filter((l) => !beforeSet.has(l));
+  const rows = [
+    ...removed.map((text) => ({ sign: "-" as const, text })),
+    ...added.map((text) => ({ sign: "+" as const, text })),
+  ];
+  const shown = rows.slice(0, MAX_DIFF_LINES);
+
+  return (
+    <div className="mb-2 overflow-hidden rounded border border-border bg-bg text-xs">
+      <div className="flex items-center gap-2 border-b border-border px-2 py-1">
+        <span className="truncate font-mono text-muted">{preview.path}</span>
+        <span className="ml-auto shrink-0 font-mono">
+          <span className="text-success">+{preview.added}</span>{" "}
+          <span className="text-danger">−{preview.removed}</span>
+        </span>
+      </div>
+      <pre className="max-h-48 overflow-auto p-2 font-mono text-[11px] leading-snug">
+        {shown.map((r, i) => (
+          <div
+            key={i}
+            className={
+              r.sign === "+"
+                ? "bg-success/10 text-success"
+                : "bg-danger/10 text-danger"
+            }
+          >
+            {r.sign} {r.text}
+          </div>
+        ))}
+        {rows.length > MAX_DIFF_LINES && (
+          <div className="text-faint">… {rows.length - MAX_DIFF_LINES} more changed lines</div>
+        )}
+      </pre>
+    </div>
+  );
 }
 
-export function Chat({ client }: { client: MastersClient }) {
-  const [sessions, setSessions] = useState<SessionDto[]>([]);
-  const [sessionId, setSessionId] = useState<string | null>(null);
+/**
+ * The single-agent chat pane. Controlled by App: the active `sessionId` and `streaming`
+ * state live upstream (so the Sidebar's session list stays in sync and can block
+ * switching mid-run). Chat owns only the in-flight transcript + approval/audit UI.
+ */
+export function Chat({
+  client,
+  sessionId,
+  streaming,
+  onStreamingChange,
+  onActivity,
+}: {
+  client: MastersClient;
+  sessionId: string | null;
+  streaming: boolean;
+  onStreamingChange: (streaming: boolean) => void;
+  onActivity: () => void;
+}) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
-  const [streaming, setStreaming] = useState(false);
   const [approval, setApproval] = useState<PendingApproval | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [showPanel, setShowPanel] = useState(false);
   const [audit, setAudit] = useState<AuditEntryDto[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
+  const approvalRef = useRef<HTMLDivElement>(null);
+  const prevFocusRef = useRef<HTMLElement | null>(null);
+  const { ref: scrollRef, atBottom, scrollToBottom } = useStickToBottom([turns]);
 
   async function refreshAudit(id = sessionId) {
     if (!id) return;
@@ -52,25 +129,35 @@ export function Chat({ client }: { client: MastersClient }) {
     }
   }
 
-  async function refreshSessions() {
-    try {
-      setSessions(await client.listSessions());
-    } catch {
-      /* non-fatal: the switcher just stays empty */
-    }
-  }
-
-  // On mount: start a fresh chat session, and load the list of prior sessions to switch between.
+  // Load the active session's history whenever it changes (App owns which session is active).
   useEffect(() => {
+    if (!sessionId) {
+      setTurns([]);
+      return;
+    }
+    let cancelled = false;
+    setNotice(null);
     client
-      .createSession("Desktop chat")
-      .then((s) => {
-        setSessionId(s.id);
-        refreshSessions();
+      .listMessages(sessionId)
+      .then((msgs) => {
+        if (cancelled) return;
+        setTurns(
+          msgs.map((m): Turn =>
+            m.role === "tool"
+              ? { kind: "tool", step: { id: m.id, tool: "tool", callSummary: m.content } }
+              : m.role === "assistant"
+                ? { kind: "assistant", content: m.content }
+                : { kind: "user", content: m.content },
+          ),
+        );
       })
-      .catch((e) => console.error(e));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client]);
+      .catch(() => {
+        if (!cancelled) setTurns([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, sessionId]);
 
   // Keep the audit trail in sync with the active session whenever the panel is open.
   useEffect(() => {
@@ -78,33 +165,39 @@ export function Chat({ client }: { client: MastersClient }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showPanel, sessionId]);
 
-  async function newChat() {
-    try {
-      const s = await client.createSession("Desktop chat");
-      setSessionId(s.id);
-      setTurns([]);
-      setNotice(null);
-      refreshSessions();
-    } catch (e) {
-      setNotice(`New chat failed: ${String(e)}`);
+  // Esc stops an in-flight stream.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && streaming) stop();
     }
-  }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streaming]);
 
-  async function switchSession(id: string) {
-    if (id === sessionId || streaming) return;
-    setSessionId(id);
-    setNotice(null);
-    try {
-      const msgs = await client.listMessages(id);
-      setTurns(
-        msgs.map((m) => ({
-          role: (m.role === "assistant" || m.role === "tool" ? m.role : "user") as Turn["role"],
-          content: m.content,
-        })),
-      );
-    } catch (e) {
-      setTurns([]);
-      setNotice(`Could not load session: ${String(e)}`);
+  // The approval prompt is the security-critical control: focus it when it appears,
+  // restore focus when it resolves, and keep Tab within it while a decision is pending.
+  useEffect(() => {
+    if (approval) {
+      prevFocusRef.current = document.activeElement as HTMLElement | null;
+      approvalRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    } else {
+      prevFocusRef.current?.focus?.();
+    }
+  }, [approval]);
+
+  function trapApprovalTab(e: ReactKeyboardEvent<HTMLDivElement>) {
+    if (e.key !== "Tab") return;
+    const btns = approvalRef.current?.querySelectorAll<HTMLButtonElement>("button");
+    if (!btns || btns.length === 0) return;
+    const first = btns[0];
+    const last = btns[btns.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
     }
   }
 
@@ -112,37 +205,49 @@ export function Chat({ client }: { client: MastersClient }) {
     setTurns((t) => {
       const next = [...t];
       const last = next[next.length - 1];
-      if (last && last.role === "assistant") {
-        next[next.length - 1] = { role: "assistant", content: last.content + text };
+      if (last && last.kind === "assistant") {
+        next[next.length - 1] = { kind: "assistant", content: last.content + text };
       } else {
-        next.push({ role: "assistant", content: text });
+        next.push({ kind: "assistant", content: text });
       }
       return next;
     });
+  }
+
+  function addToolCall(id: string, tool: string, summary: string) {
+    setTurns((t) => [...t, { kind: "tool", step: { id, tool, callSummary: summary } }]);
+  }
+
+  function addToolResult(id: string, summary: string, isError: boolean) {
+    setTurns((t) =>
+      t.map((turn) =>
+        turn.kind === "tool" && turn.step.id === id
+          ? { kind: "tool", step: { ...turn.step, result: { summary, isError } } }
+          : turn,
+      ),
+    );
   }
 
   function send() {
     if (!sessionId || !input.trim() || streaming) return;
     const content = input.trim();
     setInput("");
-    setTurns((t) => [...t, { role: "user", content }, { role: "assistant", content: "" }]);
-    setStreaming(true);
+    setTurns((t) => [...t, { kind: "user", content }, { kind: "assistant", content: "" }]);
+    onStreamingChange(true);
 
     wsRef.current = client.openStream(sessionId, content, {
       onDelta: appendAssistant,
-      onToolCall: (_id, tool, summary) =>
-        setTurns((t) => [...t, { role: "tool", content: `${tool} · ${summary}` }]),
-      onToolResult: (_id, summary, isError) =>
-        setTurns((t) => [...t, { role: "tool", content: summary, isError }]),
+      onToolCall: addToolCall,
+      onToolResult: addToolResult,
       onApproval: (a) => setApproval(a),
       onComplete: () => {
-        setStreaming(false);
-        refreshSessions();
+        onStreamingChange(false);
+        onActivity();
         refreshAudit();
       },
       onError: (message) => {
-        setStreaming(false);
-        setTurns((t) => [...t, { role: "assistant", content: `⚠️ ${message}` }]);
+        onStreamingChange(false);
+        appendAssistant(`\n\n⚠️ ${message}`);
       },
     });
   }
@@ -157,7 +262,7 @@ export function Chat({ client }: { client: MastersClient }) {
   function stop() {
     wsRef.current?.send(JSON.stringify({ type: "stop" }));
     wsRef.current?.close();
-    setStreaming(false);
+    onStreamingChange(false);
   }
 
   async function revert() {
@@ -173,24 +278,7 @@ export function Chat({ client }: { client: MastersClient }) {
   return (
     <div className="flex h-full min-h-0">
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Session bar: switch between prior chats or start a new one. */}
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-          <Select
-            className="max-w-xs"
-            value={sessionId ?? ""}
-            onChange={(e) => switchSession(e.target.value)}
-            disabled={streaming}
-          >
-            {sessions.length === 0 && <option value="">Desktop chat</option>}
-            {sessions.map((s) => (
-              <option key={s.id} value={s.id}>
-                {(s.title || "Untitled") + " · " + new Date(s.updated_at).toLocaleString()}
-              </option>
-            ))}
-          </Select>
-          <Button variant="ghost" size="sm" onClick={newChat} disabled={streaming}>
-            <Plus className="size-4" /> New chat
-          </Button>
           <div className="flex-1" />
           <IconButton
             label={showPanel ? "Hide details" : "Show details"}
@@ -200,54 +288,67 @@ export function Chat({ client }: { client: MastersClient }) {
           </IconButton>
         </div>
 
-        <div className="flex-1 space-y-3 overflow-y-auto p-6">
-          {turns.length === 0 && (
-            <div className="mx-auto mt-16 flex max-w-sm flex-col items-center text-center">
-              <PandaMark className="size-16 opacity-90" />
-              <h2 className="mt-4 text-xl font-semibold text-text">
-                What can Masters do for you?
-              </h2>
-              <p className="mt-2 text-sm text-muted">
-                Ask Masters to work on your granted files — every tool call is gated and audited.
-              </p>
-            </div>
-          )}
-          {turns.map((turn, i) =>
-            turn.role === "tool" ? (
-              <div
-                key={i}
-                className="flex items-start gap-2 rounded border border-tool-border bg-tool-bg px-3 py-2 font-mono text-xs text-tool-fg"
-              >
-                {turn.isError ? (
-                  <CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-                ) : (
-                  <Wrench className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-                )}
-                <span className="whitespace-pre-wrap break-words">{turn.content}</span>
+        <div className="relative min-h-0 flex-1">
+          <div
+            ref={scrollRef}
+            className="h-full space-y-3 overflow-y-auto p-6"
+            role="log"
+            aria-live="polite"
+          >
+            {turns.length === 0 && (
+              <div className="mx-auto mt-16 flex max-w-sm flex-col items-center text-center">
+                <PandaMark className="size-16 opacity-90" />
+                <h2 className="mt-4 text-xl font-semibold text-text">What can Masters do for you?</h2>
+                <p className="mt-2 text-sm text-muted">
+                  Ask Masters to work on your granted files — every tool call is gated and audited.
+                </p>
               </div>
-            ) : (
-              <div key={i} className={turn.role === "user" ? "text-right" : "text-left"}>
-                <span
-                  className={
-                    "inline-block max-w-[80%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm " +
-                    (turn.role === "user"
-                      ? "rounded-br-sm bg-accent text-accent-fg"
-                      : "rounded-bl-sm bg-surface-2 text-text")
-                  }
-                >
-                  {turn.content || (turn.role === "assistant" ? "…" : "")}
-                </span>
-              </div>
-            ),
+            )}
+            {turns.map((turn, i) =>
+              turn.kind === "tool" ? (
+                <ToolStep key={turn.step.id || i} step={turn.step} />
+              ) : turn.kind === "user" ? (
+                <div key={i} className="text-right">
+                  <span className="inline-block max-w-[80%] whitespace-pre-wrap rounded-lg rounded-br-sm bg-accent px-3 py-2 text-sm text-accent-fg">
+                    {turn.content}
+                  </span>
+                </div>
+              ) : (
+                <div key={i} className="text-left">
+                  <div className="inline-block max-w-[80%] rounded-lg rounded-bl-sm bg-surface-2 px-3 py-2 text-text">
+                    {turn.content ? (
+                      <Markdown text={turn.content} />
+                    ) : (
+                      <span className="text-sm text-muted">…</span>
+                    )}
+                  </div>
+                </div>
+              ),
+            )}
+          </div>
+          {!atBottom && (
+            <button
+              onClick={() => scrollToBottom("smooth")}
+              className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-border bg-bg px-3 py-1 text-xs text-muted shadow hover:text-text"
+            >
+              <ArrowDown className="size-3.5" /> Jump to latest
+            </button>
           )}
         </div>
 
         {approval && (
-          <div className="border-t border-tool-border bg-tool-bg p-3 text-sm">
+          <div
+            ref={approvalRef}
+            onKeyDown={trapApprovalTab}
+            role="alertdialog"
+            aria-label="Tool approval required"
+            className="border-t border-tool-border bg-tool-bg p-3 text-sm"
+          >
             <p className="mb-2 text-text">
               Approve <Badge variant="tool">{approval.tool}</Badge> — {approval.summary}{" "}
               <span className="text-muted">[{approval.classes.join(", ")}]</span>?
             </p>
+            {approval.preview && <DiffPreview preview={approval.preview} />}
             <div className="flex gap-2">
               <Button variant="primary" size="sm" onClick={() => decide("allow")}>
                 <Check className="size-3.5" /> Allow once
@@ -263,33 +364,32 @@ export function Chat({ client }: { client: MastersClient }) {
         )}
 
         {notice && (
-          <div className="border-t border-border bg-surface px-4 py-2 text-xs text-muted">
-            {notice}
-          </div>
+          <div className="border-t border-border bg-surface px-4 py-2 text-xs text-muted">{notice}</div>
         )}
 
-        <div className="flex gap-2 border-t border-border bg-bg p-3">
-          <Input
-            className="flex-1"
-            placeholder={sessionId ? "Message Masters…" : "Connecting…"}
-            value={input}
-            disabled={!sessionId}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && send()}
-          />
-          <Button variant="ghost" onClick={revert} title="Undo the last file change">
-            <Undo2 className="size-4" /> Revert
-          </Button>
-          {streaming ? (
-            <Button variant="secondary" onClick={stop}>
-              <Square className="size-4" /> Stop
-            </Button>
-          ) : (
-            <Button variant="primary" onClick={send} disabled={!sessionId || !input.trim()}>
-              <SendHorizontal className="size-4" /> Send
-            </Button>
-          )}
-        </div>
+        <Composer
+          value={input}
+          onChange={setInput}
+          onSubmit={send}
+          disabled={!sessionId}
+          placeholder={sessionId ? "Message Masters…  (Shift+Enter for a new line)" : "Connecting…"}
+          trailing={
+            <>
+              <Button variant="ghost" onClick={revert} title="Undo the last file change">
+                <Undo2 className="size-4" /> Revert
+              </Button>
+              {streaming ? (
+                <Button variant="secondary" onClick={stop}>
+                  <Square className="size-4" /> Stop
+                </Button>
+              ) : (
+                <Button variant="primary" onClick={send} disabled={!sessionId || !input.trim()}>
+                  <SendHorizontal className="size-4" /> Send
+                </Button>
+              )}
+            </>
+          }
+        />
       </div>
 
       {/* Right-hand context panel: session detail + this turn's gated tool activity. */}
@@ -301,9 +401,7 @@ export function Chat({ client }: { client: MastersClient }) {
           </div>
           <div>
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
-                Audit trail
-              </h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Audit trail</h3>
               <span className="text-xs text-faint">{audit.length}</span>
             </div>
             {audit.length === 0 ? (
@@ -314,9 +412,7 @@ export function Chat({ client }: { client: MastersClient }) {
                   <li key={e.id} className="rounded border border-border bg-bg p-2">
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate font-mono text-xs text-text">{e.tool}</span>
-                      <Badge variant={DECISION_VARIANT[e.decision] ?? "neutral"}>
-                        {e.decision}
-                      </Badge>
+                      <Badge variant={DECISION_VARIANT[e.decision] ?? "neutral"}>{e.decision}</Badge>
                     </div>
                     {e.result_summary && (
                       <div className="mt-1 break-words text-xs text-muted">{e.result_summary}</div>

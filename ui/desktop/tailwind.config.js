@@ -42,6 +42,16 @@ export default {
           bg: "var(--color-danger-bg)",
           fg: "var(--color-danger-fg)",
         },
+        warning: {
+          DEFAULT: "var(--color-warning)",
+          bg: "var(--color-warning-bg)",
+          fg: "var(--color-warning-fg)",
+        },
+        info: {
+          DEFAULT: "var(--color-info)",
+          bg: "var(--color-info-bg)",
+          fg: "var(--color-info-fg)",
+        },
       },
       borderRadius: {
         sm: "var(--radius-sm)",
@@ -62,6 +72,9 @@ export default {
           "Segoe UI",
           "sans-serif",
         ],
+        // The wordmark / screen-title face. Maps to `font-display` (used in MastersHub);
+        // currently the same Inter stack — retune via `--font-display` if a display cut lands.
+        display: ["var(--font-display)"],
       },
     },
   },

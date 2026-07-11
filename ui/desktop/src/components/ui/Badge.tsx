@@ -14,7 +14,7 @@ const variants: Record<Variant, string> = {
   accent: "bg-accent-subtle text-accent",
   tool: "bg-tool-bg text-tool-fg",
   success: "bg-success/10 text-success",
-  warning: "bg-tool-bg text-tool-fg",
+  warning: "bg-warning-bg text-warning-fg",
   danger: "bg-danger-bg text-danger-fg",
 };
 
