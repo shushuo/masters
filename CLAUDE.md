@@ -280,7 +280,7 @@ Build/test with `cargo build --workspace` / `cargo test --workspace` (the latter
 getmasters-core's `testing` feature — the offline `MockProvider` fake — via the server's dev-dependency
 + Cargo feature unification; the `vec0` backend builds with `--features sqlite-vec`; PDF/DOCX extractor
 tests with `--features pdf,docx`; the lean-core gate is `cargo test -p getmasters-core --features
-testing`). The original tech-design package under `docs/` (incl. the thirteen
+testing`). The original tech-design package under `docs/` (incl. the eighteen
 ADRs) remains the authoritative spec.
 
 **Install/first-run (infra):** a GitHub Action (`.github/workflows/desktop-build.yml`) builds unsigned
@@ -416,8 +416,8 @@ masters); OCR for image PDFs; vector recall
 for memory/skills; an
 always-on background scheduler/delivery service (FR-27 messaging gateways + inbound are ADR-0009 non-goals).
 The agent loop and prompt assembler mark the seams. When implementing further, follow the roadmap
-and the ADRs rather than improvising stack choices — the fourteen foundational decisions are already
-settled (see below).
+and the ADRs rather than improvising stack choices — the eighteen foundational decisions are already
+settled (see below; 0015–0018 are the design-only investing-vertical decisions, not yet implemented).
 
 > **Note on `src-tauri`:** `ui/desktop/src-tauri` is deliberately excluded from the Cargo
 > workspace so `cargo build --workspace` stays green in headless CI (Tauri needs webkit + a
@@ -447,7 +447,8 @@ The docs are numbered and meant to be read in order; later docs depend on earlie
 - `docs/08-roadmap.md` — phased plan (Phase 0 → 4) and how features map to phases
 - `docs/09-projects-masters.md` — Project as a context container + Masters (persona-over-Skill) + Master Teams
 - `docs/10-ui-design.md` — desktop UI design system as implemented (tokens/layout/components/interaction) + Manus/Claude-Cowork benchmark + prioritized enhancement plan
-- `docs/adr/0001..0014` — the binding decisions; treat these as authoritative (0006–0009 are the Hermes-informed refinements; 0010–0012 are the WorkBuddy-informed Project/Master-Team additions, 0012 = the multi-master group-chat communication model; 0013 = per-master model selection; 0014 = external ACP master agents)
+- `docs/11-investment-agent.md` — the investing-vertical product positioning & design (《大师》 pivot; 13 settled product decisions D1–D13; design-only, not yet implemented)
+- `docs/adr/0001..0018` — the binding decisions; treat these as authoritative (0006–0009 are the Hermes-informed refinements; 0010–0012 are the WorkBuddy-informed Project/Master-Team additions, 0012 = the multi-master group-chat communication model; 0013 = per-master model selection; 0014 = external ACP master agents; 0015–0018 = the investing-vertical decisions from docs/11 — domain packs, asset lifecycle, market-data supply, provider vision)
 
 Diagrams are **mermaid** embedded in markdown.
 
@@ -469,6 +470,10 @@ Diagrams are **mermaid** embedded in markdown.
 | 0012 | **Multi-master conversation** = single-user group chat; @-mention addressing (one/many/`@all`, unaddressed → coordinator master); shared author-attributed transcript (assembled per 0007); bounded turn-taking (no ad-hoc master↔master auto-reply); declarative master workflows; **"shared read context, isolated gated execution"** |
 | 0013 | **Per-master model** = each master runs on its own **provider-qualified** `default_model` (any configured provider — Claude tiers/OpenAI/Ollama) via the `Provider` trait; **persona-fixed** (no runtime override); **per-master privacy boundary** (local-model masters stay on-device); fallback to default provider |
 | 0014 | **External ACP master agents** = a coding-harness *backend* on the file-backed `Master` (`backend: acp`); Masters is the **ACP client** driving a pre-installed CLI (Claude Code/Codex/OpenCode/Gemini) over stdio; its **fs/permission callbacks route through the gate** (ADR-0008); inherits env + configured `acp_env` (trusted local agent, not env-stripped like MCP connectors); coding harnesses only |
+| 0015 | **Vertical domain packs** (investing pivot, docs/11) = verticalization is **four layers on the unchanged foundation**: domain data/compute as built-in gated MCP servers (Study precedent) + content packs via catalog sync + vertical UI; core crates stay domain-free; compliance lives in content + fixed UI; the pattern is the template for future verticals |
+| 0016 | **Asset lifecycle storage** = one `assets` spine (`watching→holding→sold`) behind a gated `AssetsServer` — watchlist and ledger are states, not features; **silent-but-revocable** tracking with point-in-time snapshots; holdings + risk profile accumulate **progressively from conversation** (no upfront demands); details never leave device (redaction mode for cloud contexts); hypothetical returns only in coached quarterly reviews |
+| 0017 | **Market data supply** = hybrid: per-asset **EOD** data fetched **client-direct** from public channels (disclosure-first sourcing; adapters are catalog-hot-updated content; dual-source cross-validation with provenance, disputed → explicit ⚠ degrade) + market-wide cross-sections as one daily **cloud static-JSON snapshot** on CDN (carries the human-reviewed weekly bulletin) + cloud proxy as fallback only; **no realtime/intraday, no commercial redistribution licensing at this stage** |
+| 0018 | **Provider vision** (deferred to P2) = image input enters through the `Provider` trait (capability-flagged; local-VLM route preserves the ADR-0013 privacy boundary) for **screenshot holdings extraction**: proposal → user-confirmed diff preview → gated AssetsServer writes; screenshots never persisted; **no chart reading** (compliance boundary) |
 
 Cross-cutting invariants the design depends on:
 - Every side-effecting tool call routes through **Permission & Audit** before execution — adding a tool must

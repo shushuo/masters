@@ -506,6 +506,8 @@ NFR-INV-5 主动触达日频聚合、可静默、绝不盘中推送。
 2. **吉祥物与视觉体系专项**（§13 视觉方向的落地）：新吉祥物选型、logo、配色重校。
 3. **转型重写范围**：README / docs/00/01/07/10 / masters-cloud 落地页（实施期挂账；
    品牌文案按 §13 话术护栏执行）。
-4. **新增 ADR**（实施时）：`0015-vertical-domain-packs`、`0016-asset-lifecycle-storage`
-  （标的生命周期 + 脱敏边界）、`0017-market-data-supply`（混合供给：客户端直连 + 适配器
-   目录热更新 + 云端横截面快照与兜底的边界）、`0018-provider-vision`（P2 截图识别）。
+4. ~~**新增 ADR**~~ **已完成**：[ADR-0015](./adr/0015-vertical-domain-packs.md)（垂类=域包模式）、
+   [ADR-0016](./adr/0016-asset-lifecycle-storage.md)（标的生命周期存储）、
+   [ADR-0017](./adr/0017-market-data-supply.md)（混合数据供给）、
+   [ADR-0018](./adr/0018-provider-vision.md)（Provider 视觉能力，P2）——本文档的决议
+   D1–D13 中涉及架构的部分已升格为正式 ADR，与 0001–0014 同级约束。

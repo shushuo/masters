@@ -6,8 +6,10 @@ original foundational set; D6–D9 add the design refinements borrowed from [Her
 **Project-as-context-container**, and **multi-master conversation** concepts adapted from
 [WorkBuddy](https://www.workbuddy.cn/) (single-user slice; D12 extends D10 with the group-chat communication
 model); D13 adds **per-master model selection** (extends D3 + D10); D14 adds **external ACP master agents** —
-a coding-harness master backend (extends D10, reuses D8's gate). Status values: `Accepted` (chosen default) —
-revisit if the listed assumptions change.
+a coding-harness master backend (extends D10, reuses D8's gate); D15–D18 add the **investing-vertical**
+decisions from the [docs/11](../11-investment-agent.md) pivot — the vertical-domain-pack pattern, asset
+lifecycle storage, hybrid market-data supply, and provider vision. Status values: `Accepted` (chosen
+default) — revisit if the listed assumptions change.
 
 | ADR | Decision | Status |
 |-----|----------|--------|
@@ -25,3 +27,7 @@ revisit if the listed assumptions change.
 | [0012](./0012-multi-master-conversation.md) | Multi-master conversation — **single-user group chat: @-addressing, shared attributed transcript, bounded turn-taking, declarative workflows** | Accepted |
 | [0013](./0013-per-master-model.md) | Per-master model — **each master runs on its own provider-qualified model (any configured provider); persona-fixed; per-master privacy boundary** | Accepted |
 | [0014](./0014-external-acp-master-agents.md) | External ACP master agents — **a coding-harness backend: drive a pre-installed ACP CLI (Claude Code/Codex/OpenCode/Gemini) as a first-class master; fs/permission callbacks routed through the gate** | Accepted |
+| [0015](./0015-vertical-domain-packs.md) | Vertical domain packs — **verticalization = domain MCP servers + catalog content packs + vertical UI on the unchanged general foundation; compliance as content; repeatable pattern** | Accepted |
+| [0016](./0016-asset-lifecycle-storage.md) | Asset lifecycle storage — **one asset spine (watching→holding→sold), DB-owned behind a gated server; silent-but-revocable tracking with snapshots; progressive accumulation; details never leave device** | Accepted |
+| [0017](./0017-market-data-supply.md) | Market data supply — **client-direct public EOD data via catalog-updated adapters + one daily cloud cross-section snapshot on CDN + proxy as fallback; disclosure-first sourcing; dual-source validation; no realtime** | Accepted |
+| [0018](./0018-provider-vision.md) | Provider vision — **image input through the Provider trait for screenshot holdings extraction; proposal→preview→gated write; local-VLM privacy route; no chart reading** | Accepted (deferred to P2) |
