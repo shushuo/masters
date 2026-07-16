@@ -796,6 +796,63 @@ pub struct EmailSettingsUpdate {
     pub to: Option<String>,
 }
 
+/// One tracked instrument on the asset lifecycle spine (investing vertical, ADR-0016).
+/// `state`: `watching` | `holding` | `sold`. The snapshot fields are the first-interest record.
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct AssetDto {
+    /// Canonical symbol, e.g. `sh600519`.
+    pub symbol: String,
+    pub name: String,
+    pub market: String,
+    /// `"stock"` | `"fund"`.
+    pub kind: String,
+    pub state: String,
+    #[serde(default)]
+    pub watch_reason: Option<String>,
+    /// Epoch ms of first interest.
+    pub watched_at: i64,
+    #[serde(default)]
+    pub snapshot_price: Option<f64>,
+    /// `YYYY-MM-DD` the snapshot price is for.
+    #[serde(default)]
+    pub snapshot_date: Option<String>,
+}
+
+/// A market quote with provenance (ADR-0017). `stale` = an old cached value served because a
+/// refresh failed — the UI must render this honestly, never hide it.
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct QuoteDto {
+    pub symbol: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    /// `YYYY-MM-DD` the quote is for.
+    pub trade_date: String,
+    #[serde(default)]
+    pub close: Option<f64>,
+    #[serde(default)]
+    pub prev_close: Option<f64>,
+    #[serde(default)]
+    pub change_pct: Option<f64>,
+    /// Adapter id, e.g. `eastmoney`.
+    pub source: String,
+    /// Epoch ms.
+    pub fetched_at: i64,
+    /// `"unverified"` | `"verified"` | `"disputed"`.
+    pub validation: String,
+    pub stale: bool,
+}
+
+/// The seeded investing workspace (docs/11): the default project + the standing expert team.
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct InvestingWorkspaceDto {
+    pub project_id: String,
+    pub team_slug: String,
+    /// The coordinator master slug (answers unaddressed messages).
+    pub coordinator: String,
+    /// Member master slugs.
+    pub members: Vec<String>,
+}
+
 /// Uniform error envelope returned on any 4xx/5xx.
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 pub struct ErrorDto {

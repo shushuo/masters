@@ -12,6 +12,7 @@ pub mod delivery;
 pub mod group;
 pub mod home;
 pub mod install;
+pub mod investing;
 pub mod market_fetch;
 pub mod master;
 pub mod master_templates;

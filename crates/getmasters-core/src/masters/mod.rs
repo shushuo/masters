@@ -271,7 +271,14 @@ impl MasterStore {
     /// Create (or overwrite) a master: write `masters/<slug>.md` and upsert its index row. Returns
     /// the canonical slug.
     pub fn create(&self, master: &Master) -> Result<String> {
-        let slug = slugify(&master.name);
+        self.create_with_slug(&slugify(&master.name), master)
+    }
+
+    /// Create (or overwrite) a master under an explicit slug. The seam for seeded system
+    /// masters whose display name is non-ASCII (e.g. 首席顾问) but whose slug must stay a
+    /// stable ASCII handle (`chief`) for @-mentions, team membership, and file names.
+    pub fn create_with_slug(&self, slug: &str, master: &Master) -> Result<String> {
+        let slug = slugify(slug);
         let dir = self.dir();
         std::fs::create_dir_all(&dir)?;
         let file = format!("{MASTERS_DIR}/{slug}.md");
