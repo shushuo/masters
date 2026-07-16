@@ -55,6 +55,22 @@ pub struct SymbolHit {
     pub kind: String,
 }
 
+/// A disclosure announcement as returned by an upstream adapter (the statutory channel, D11).
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct Announcement {
+    /// Upstream announcement id (dedup key together with the adapter's announcement source).
+    pub ann_id: String,
+    pub symbol: String,
+    pub title: String,
+    /// `YYYY-MM-DD` the announcement is dated.
+    pub ann_date: String,
+    /// Epoch ms of publication.
+    pub ann_time: i64,
+    pub url: Option<String>,
+    /// e.g. `"cninfo"` — announcements may come from a different channel than quotes.
+    pub source: String,
+}
+
 /// The injected upstream adapter (implemented in `getmasters-server`; ADR-0017 makes adapters
 /// catalog-hot-updatable content in a later slice). Errors are strings — the policy layer decides
 /// how to degrade, the adapter only reports.
@@ -66,6 +82,15 @@ pub trait MarketFetcher: Send + Sync {
     async fn fetch_quote(&self, symbol: &str) -> Result<FetchedQuote, String>;
     /// Search instruments by code / name / pinyin.
     async fn search(&self, query: &str) -> Result<Vec<SymbolHit>, String>;
+    /// Recent disclosure announcements for a symbol (the earnings sentinel's data face).
+    /// Default: unsupported — sources without a disclosure channel degrade gracefully.
+    async fn recent_announcements(
+        &self,
+        _symbol: &str,
+        _days: u32,
+    ) -> Result<Vec<Announcement>, String> {
+        Err("announcements not supported by this source".into())
+    }
 }
 
 /// Normalize a user- or model-supplied symbol to the canonical lowercase `sh`/`sz` + 6-digit
@@ -176,6 +201,46 @@ impl MarketData {
             },
         }
     }
+
+    /// Recent announcements for a symbol (last `days`): fetch fresh (the sentinel runs daily —
+    /// no TTL games), cache what came back, and on fetch failure fall back to the cache window
+    /// (`stale: true` semantics are carried by the caller noting the fetch failed). Nothing at
+    /// all → empty list is an honest answer for announcements (unlike prices).
+    pub async fn announcements(
+        &self,
+        symbol: &str,
+        days: u32,
+        now_ms: i64,
+    ) -> Result<Vec<crate::store::AnnouncementRow>, String> {
+        let symbol =
+            normalize_symbol(symbol).ok_or_else(|| format!("unknown symbol '{symbol}'"))?;
+        let since = now_ms - (days as i64) * 24 * 60 * 60 * 1000;
+        match self.fetcher.recent_announcements(&symbol, days).await {
+            Ok(list) => {
+                for a in &list {
+                    let row = crate::store::AnnouncementRow {
+                        symbol: a.symbol.clone(),
+                        ann_id: a.ann_id.clone(),
+                        title: a.title.clone(),
+                        ann_date: a.ann_date.clone(),
+                        ann_time: a.ann_time,
+                        url: a.url.clone(),
+                        source: a.source.clone(),
+                        fetched_at: now_ms,
+                    };
+                    self.store
+                        .insert_announcement(&row)
+                        .map_err(|e| format!("announcement cache write failed: {e}"))?;
+                }
+            }
+            Err(e) => {
+                tracing::debug!(symbol = %symbol, "announcement fetch failed; serving cache: {e}");
+            }
+        }
+        self.store
+            .list_announcements(&symbol, since)
+            .map_err(|e| format!("announcement cache read failed: {e}"))
+    }
 }
 
 /// Headless test fakes (the `MockProvider` role for market data).
@@ -189,6 +254,7 @@ pub mod testing {
     /// Serves canned quotes and counts fetches (for cache-hit assertions).
     pub struct FixtureFetcher {
         quotes: HashMap<String, FetchedQuote>,
+        announcements: HashMap<String, Vec<Announcement>>,
         pub calls: AtomicUsize,
     }
 
@@ -196,8 +262,15 @@ pub mod testing {
         pub fn new(quotes: Vec<FetchedQuote>) -> Self {
             Self {
                 quotes: quotes.into_iter().map(|q| (q.symbol.clone(), q)).collect(),
+                announcements: HashMap::new(),
                 calls: AtomicUsize::new(0),
             }
+        }
+
+        /// Add canned announcements for a symbol.
+        pub fn with_announcements(mut self, symbol: &str, list: Vec<Announcement>) -> Self {
+            self.announcements.insert(symbol.to_string(), list);
+            self
         }
 
         /// A single-quote fixture for the common case.
@@ -244,6 +317,16 @@ pub mod testing {
                     kind: "stock".into(),
                 })
                 .collect())
+        }
+        async fn recent_announcements(
+            &self,
+            symbol: &str,
+            _days: u32,
+        ) -> Result<Vec<Announcement>, String> {
+            self.announcements
+                .get(symbol)
+                .cloned()
+                .ok_or_else(|| format!("fixture has no announcements for {symbol}"))
         }
     }
 
@@ -341,5 +424,42 @@ mod policy_tests {
         assert_eq!(v.row.close, Some(1700.0));
         // No cache at all → explicit error, never a fabricated number.
         assert!(md_bad.quote("sz000001", 1_000).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn announcements_cache_and_fall_back() {
+        let store = Store::open_in_memory().unwrap();
+        let day_ms = 24 * 60 * 60 * 1000;
+        let ann = Announcement {
+            ann_id: "a1".into(),
+            symbol: "sh600519".into(),
+            title: "2026年半年度报告".into(),
+            ann_date: "2026-07-15".into(),
+            ann_time: 9 * day_ms,
+            url: Some("https://static.cninfo.com.cn/x.pdf".into()),
+            source: "cninfo".into(),
+        };
+        let fetcher = Arc::new(
+            FixtureFetcher::single("sh600519", "贵州茅台", 1700.0)
+                .with_announcements("sh600519", vec![ann]),
+        );
+        let md = MarketData::new(store.clone(), fetcher);
+
+        let now = 10 * day_ms;
+        let got = md.announcements("600519", 2, now).await.unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].title, "2026年半年度报告");
+        assert_eq!(got[0].source, "cninfo");
+
+        // Upstream gone → the cache window still serves (graceful fallback)…
+        let md_bad = MarketData::new(store.clone(), Arc::new(FailingFetcher));
+        let got = md_bad.announcements("sh600519", 2, now).await.unwrap();
+        assert_eq!(got.len(), 1);
+        // …but an announcement outside the look-back window is not returned.
+        let got = md_bad
+            .announcements("sh600519", 2, now + 5 * day_ms)
+            .await
+            .unwrap();
+        assert!(got.is_empty());
     }
 }

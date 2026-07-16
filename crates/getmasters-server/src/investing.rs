@@ -78,7 +78,29 @@ fn touch_recipes() -> Vec<(RecipeDto, &'static str)> {
         ),
         extensions: vec!["assets".into(), "market".into()],
     };
-    vec![(weekly, "0 12 * * SUN"), (movers, "30 7 * * MON-FRI")]
+    let earnings = RecipeDto {
+        name: "earnings-sentinel".into(),
+        title: "财报哨兵".into(),
+        description: "每晚检查关注标的的法定披露：仅当有定期报告/业绩类公告才提醒；否则静默跳过。"
+            .into(),
+        parameters: vec![],
+        prompt: format!(
+            "你是投资研究工作台的财报哨兵，遵守合规边界（只给事实，不给买卖指令或预期判断）。\n\
+             用 assets.list_assets 获取 watching 状态的标的；如果列表为空，只输出 {NO_ALERT}。\n\
+             否则逐个用 market.list_announcements（days=2）查询近两天的法定披露公告，只保留标题\
+             含「年度报告」「半年度报告」「季度报告」「业绩预告」「业绩快报」之一的条目（摘要类、\
+             更正类除外）。如果一条都没有，只输出 {NO_ALERT}，不要输出其他任何内容。\n\
+             否则逐条列出：标的名称 代码 《公告标题》（公告日期 · 来源），附文档链接；并提醒\
+             用户可以在对话中要求解读这份报告。\n{disclaimer}"
+        ),
+        extensions: vec!["assets".into(), "market".into()],
+    };
+    vec![
+        (weekly, "0 12 * * SUN"),
+        (movers, "30 7 * * MON-FRI"),
+        // 13:30 UTC = 21:30 Beijing — after the evening disclosure wave.
+        (earnings, "30 13 * * MON-FRI"),
+    ]
 }
 
 /// The compliance declaration block written into the (empty) default project's instructions —
@@ -199,7 +221,7 @@ mod tests {
     #[test]
     fn touch_recipes_are_well_formed() {
         let recipes = touch_recipes();
-        assert_eq!(recipes.len(), 2);
+        assert_eq!(recipes.len(), 3);
         for (recipe, cron) in &recipes {
             // 5-field standard cron (the scheduler normalizes to seconds-first).
             assert_eq!(cron.split_whitespace().count(), 5, "{}", recipe.name);

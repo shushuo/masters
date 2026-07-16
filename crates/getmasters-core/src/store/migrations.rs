@@ -455,6 +455,24 @@ pub const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX idx_price_cache_symbol ON price_cache(symbol, trade_date);
     "#,
+    // 0023 — disclosure/announcement cache (the earnings sentinel's data face, ADR-0017/D11:
+    // filings come from the statutory disclosure channel). Global like price_cache; every row
+    // carries source + fetch provenance. `ann_id` is the upstream announcement id (dedup key).
+    r#"
+    CREATE TABLE announcements (
+        id         TEXT PRIMARY KEY,
+        symbol     TEXT NOT NULL,              -- canonical, e.g. 'sh600519'
+        ann_id     TEXT NOT NULL,              -- upstream announcement id
+        title      TEXT NOT NULL,
+        ann_date   TEXT NOT NULL,              -- 'YYYY-MM-DD' the announcement is dated
+        ann_time   INTEGER NOT NULL,           -- epoch ms of publication
+        url        TEXT,                       -- public document URL
+        source     TEXT NOT NULL,              -- e.g. 'cninfo'
+        fetched_at INTEGER NOT NULL,           -- epoch ms
+        UNIQUE(source, ann_id)
+    );
+    CREATE INDEX idx_announcements_symbol ON announcements(symbol, ann_time);
+    "#,
 ];
 
 /// Apply any pending migrations. Safe to call on every startup.

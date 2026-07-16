@@ -169,6 +169,24 @@ pub struct PriceRow {
     pub validation: String,
 }
 
+/// One cached disclosure announcement (the earnings sentinel's data face, ADR-0017/D11).
+#[derive(Clone, Debug)]
+pub struct AnnouncementRow {
+    pub symbol: String,
+    /// Upstream announcement id (dedup key with `source`).
+    pub ann_id: String,
+    pub title: String,
+    /// `YYYY-MM-DD` the announcement is dated.
+    pub ann_date: String,
+    /// Epoch ms of publication.
+    pub ann_time: i64,
+    pub url: Option<String>,
+    /// e.g. `"cninfo"`.
+    pub source: String,
+    /// Epoch ms.
+    pub fetched_at: i64,
+}
+
 /// One indexed master (`masters/<slug>.md`) — listing metadata only (Phase 4a, FR-39/46).
 #[derive(Clone, Debug)]
 pub struct MasterRow {
@@ -1624,6 +1642,54 @@ impl Store {
             )
             .optional()?;
         Ok(row)
+    }
+
+    /// Insert or refresh a cached announcement (`UNIQUE(source, ann_id)` upsert).
+    pub fn insert_announcement(&self, a: &AnnouncementRow) -> Result<()> {
+        self.lock().execute(
+            "INSERT INTO announcements (id, symbol, ann_id, title, ann_date, ann_time, url,
+                                        source, fetched_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(source, ann_id) DO UPDATE SET
+                title = ?4, ann_date = ?5, ann_time = ?6, url = ?7, fetched_at = ?9",
+            rusqlite::params![
+                new_id(),
+                a.symbol,
+                a.ann_id,
+                a.title,
+                a.ann_date,
+                a.ann_time,
+                a.url,
+                a.source,
+                a.fetched_at
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// A symbol's cached announcements published since `since_ms`, newest first.
+    pub fn list_announcements(&self, symbol: &str, since_ms: i64) -> Result<Vec<AnnouncementRow>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(
+            "SELECT symbol, ann_id, title, ann_date, ann_time, url, source, fetched_at
+             FROM announcements WHERE symbol = ?1 AND ann_time >= ?2
+             ORDER BY ann_time DESC",
+        )?;
+        let rows = stmt
+            .query_map(rusqlite::params![symbol, since_ms], |r| {
+                Ok(AnnouncementRow {
+                    symbol: r.get(0)?,
+                    ann_id: r.get(1)?,
+                    title: r.get(2)?,
+                    ann_date: r.get(3)?,
+                    ann_time: r.get(4)?,
+                    url: r.get(5)?,
+                    source: r.get(6)?,
+                    fetched_at: r.get(7)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
     }
 
     // --- Recipes (file-backed YAML index, Phase 3c) -------------------------

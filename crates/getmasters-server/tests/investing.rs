@@ -133,9 +133,10 @@ async fn workspace_seeds_idempotently_and_respects_user_masters() {
     // Proactive-touch recipes + schedules seeded once — the second call added no duplicates.
     let schedules = store.list_schedules(&ws.project_id).unwrap();
     let touch: Vec<&str> = schedules.iter().map(|s| s.recipe_name.as_str()).collect();
-    assert_eq!(schedules.len(), 2, "{touch:?}");
+    assert_eq!(schedules.len(), 3, "{touch:?}");
     assert!(touch.contains(&"weekly-watch-digest"));
     assert!(touch.contains(&"watch-mover-sentinel"));
+    assert!(touch.contains(&"earnings-sentinel"));
     for s in &schedules {
         assert!(s.deliver_notify, "touch schedules deliver via notify");
         assert!(!s.deliver_email, "email stays opt-in");

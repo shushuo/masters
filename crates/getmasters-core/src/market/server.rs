@@ -31,6 +31,24 @@ pub struct SearchSymbolParams {
     pub query: String,
 }
 
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+pub struct ListAnnouncementsParams {
+    /// The instrument symbol (`sh600519`, `600519.SH`, or bare `600519`).
+    pub symbol: String,
+    /// Look-back window in days (default 2, max 30).
+    #[serde(default)]
+    pub days: Option<u32>,
+}
+
+/// An announcement as returned to the model — statutory-channel provenance included.
+#[derive(serde::Serialize)]
+struct AnnouncementOut {
+    title: String,
+    ann_date: String,
+    url: Option<String>,
+    source: String,
+}
+
 /// The quote payload returned to the model — always with provenance.
 #[derive(serde::Serialize)]
 struct QuoteOut {
@@ -64,10 +82,14 @@ impl MarketDataServer {
         }
     }
 
-    /// Side-effect class per tool (Core's classifier mirrors this) — both reads.
+    /// Side-effect class per tool (Core's classifier mirrors this) — all reads.
     pub fn tool_classes() -> &'static [(&'static str, getmasters_proto::SideEffect)] {
         use getmasters_proto::SideEffect::*;
-        &[("get_quote", Read), ("search_symbol", Read)]
+        &[
+            ("get_quote", Read),
+            ("search_symbol", Read),
+            ("list_announcements", Read),
+        ]
     }
 }
 
@@ -118,6 +140,34 @@ impl MarketDataServer {
             Ok(hits) => ok(serde_json::to_string(&hits).unwrap_or_else(|_| "[]".into())),
             Err(e) => err(format!("search_symbol failed: {e}")),
         })
+    }
+
+    #[tool(
+        description = "Recent disclosure announcements for an instrument (statutory channel, \
+                       with dates + document links). Empty list = none published in the window."
+    )]
+    async fn list_announcements(
+        &self,
+        Parameters(p): Parameters<ListAnnouncementsParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let days = p.days.unwrap_or(2).min(30);
+        Ok(
+            match self.market.announcements(&p.symbol, days, now_ms()).await {
+                Ok(rows) => {
+                    let out: Vec<AnnouncementOut> = rows
+                        .into_iter()
+                        .map(|a| AnnouncementOut {
+                            title: a.title,
+                            ann_date: a.ann_date,
+                            url: a.url,
+                            source: a.source,
+                        })
+                        .collect();
+                    ok(serde_json::to_string(&out).unwrap_or_else(|_| "[]".into()))
+                }
+                Err(e) => err(format!("list_announcements failed: {e}")),
+            },
+        )
     }
 }
 

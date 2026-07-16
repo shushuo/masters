@@ -13,10 +13,17 @@ use chrono::{FixedOffset, TimeZone};
 use serde_json::Value;
 use std::sync::Arc;
 
-use getmasters_core::market::{normalize_symbol, FetchedQuote, MarketFetcher, SymbolHit};
+use getmasters_core::market::{
+    normalize_symbol, Announcement, FetchedQuote, MarketFetcher, SymbolHit,
+};
 
 const QUOTE_BASE: &str = "https://push2.eastmoney.com/api/qt/stock/get";
 const SUGGEST_BASE: &str = "https://searchapi.eastmoney.com/api/suggest/get";
+/// Disclosure announcements come from the **statutory channel** (cninfo, D11) — a different
+/// upstream than quotes, deliberately: filings are what the channel exists to publish.
+const CNINFO_QUERY: &str = "http://www.cninfo.com.cn/new/hisAnnouncement/query";
+const CNINFO_STATIC: &str = "https://static.cninfo.com.cn/";
+const ANNOUNCEMENT_SOURCE: &str = "cninfo";
 /// The push2 fields we request: f43 latest, f57 code, f58 name, f60 prev close,
 /// f86 quote timestamp (epoch seconds), f170 change pct.
 const QUOTE_FIELDS: &str = "f43,f57,f58,f60,f86,f170";
@@ -102,6 +109,46 @@ pub fn parse_quote(symbol: &str, body: &str) -> Result<FetchedQuote, String> {
     })
 }
 
+/// Pure parser for the cninfo announcement-query body. Entries without an id/title/time are
+/// skipped (never invented); `ann_time` is epoch **ms** upstream; the document URL joins the
+/// static host with `adjunctUrl`.
+pub fn parse_cninfo_announcements(symbol: &str, body: &str) -> Result<Vec<Announcement>, String> {
+    let v: Value =
+        serde_json::from_str(body).map_err(|e| format!("bad announcements JSON: {e}"))?;
+    let list = v
+        .get("announcements")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    Ok(list
+        .iter()
+        .filter_map(|a| {
+            let ann_id = match a.get("announcementId") {
+                Some(Value::String(s)) if !s.is_empty() => s.clone(),
+                Some(Value::Number(n)) => n.to_string(),
+                _ => return None,
+            };
+            let title = a.get("announcementTitle").and_then(Value::as_str)?;
+            let ann_time = a.get("announcementTime").and_then(Value::as_i64)?;
+            let ann_date = trade_date_of(ann_time / 1000)?;
+            let url = a
+                .get("adjunctUrl")
+                .and_then(Value::as_str)
+                .filter(|u| !u.is_empty())
+                .map(|u| format!("{CNINFO_STATIC}{u}"));
+            Some(Announcement {
+                ann_id,
+                symbol: symbol.to_string(),
+                title: title.to_string(),
+                ann_date,
+                ann_time,
+                url,
+                source: ANNOUNCEMENT_SOURCE.into(),
+            })
+        })
+        .collect())
+}
+
 /// Pure parser for the suggest body. Hits with an unusable `QuoteID` are skipped.
 pub fn parse_suggest(body: &str) -> Result<Vec<SymbolHit>, String> {
     let v: Value = serde_json::from_str(body).map_err(|e| format!("bad suggest JSON: {e}"))?;
@@ -168,6 +215,50 @@ impl MarketFetcher for EastmoneyFetcher {
             .await
             .map_err(|e| format!("suggest body read failed: {e}"))?;
         parse_suggest(&body)
+    }
+
+    async fn recent_announcements(
+        &self,
+        symbol: &str,
+        days: u32,
+    ) -> Result<Vec<Announcement>, String> {
+        // cninfo's history query takes the bare 6-digit code and a date range. Dates derive
+        // via the same Shanghai-local helper as quotes (chrono is built without `clock`).
+        let code = &symbol[2..];
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let today = trade_date_of(now_secs).ok_or("clock unavailable")?;
+        let from = trade_date_of(now_secs - (days as i64) * 86_400).ok_or("clock unavailable")?;
+        // Hand-rolled urlencoded body (this reqwest build is trimmed below `.form()`).
+        let form = [
+            ("pageNum", "1".to_string()),
+            ("pageSize", "30".to_string()),
+            ("tabName", "fulltext".to_string()),
+            ("stock", code.to_string()),
+            ("seDate", format!("{from}~{today}")),
+            ("sortName", "time".to_string()),
+            ("sortType", "desc".to_string()),
+            ("isHLtitle", "false".to_string()),
+        ];
+        let encoded = form
+            .iter()
+            .map(|(k, v)| format!("{k}={}", urlencode(v)))
+            .collect::<Vec<_>>()
+            .join("&");
+        let body = self
+            .client
+            .post(CNINFO_QUERY)
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(encoded)
+            .send()
+            .await
+            .map_err(|e| format!("announcements fetch failed: {e}"))?
+            .text()
+            .await
+            .map_err(|e| format!("announcements body read failed: {e}"))?;
+        parse_cninfo_announcements(symbol, &body)
     }
 }
 
@@ -245,6 +336,34 @@ mod tests {
         assert!(parse_suggest(r#"{"QuotationCodeTable":{"Data":null}}"#)
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn parses_cninfo_announcements() {
+        // announcementTime is epoch ms; 1721026800000 = 2024-07-15 15:00 +08:00.
+        let body = r#"{"announcements":[
+            {"announcementId":"1220112233","announcementTitle":"贵州茅台：2024年半年度报告",
+             "announcementTime":1721026800000,"adjunctUrl":"finalpage/2024-07-15/1220112233.PDF"},
+            {"announcementId":9988,"announcementTitle":"临时公告","announcementTime":1721026800000},
+            {"announcementTitle":"缺 id 的坏条目","announcementTime":1721026800000}
+        ]}"#;
+        let anns = parse_cninfo_announcements("sh600519", body).unwrap();
+        assert_eq!(anns.len(), 2);
+        assert_eq!(anns[0].ann_id, "1220112233");
+        assert_eq!(anns[0].ann_date, "2024-07-15");
+        assert_eq!(
+            anns[0].url.as_deref(),
+            Some("https://static.cninfo.com.cn/finalpage/2024-07-15/1220112233.PDF")
+        );
+        assert_eq!(anns[0].source, "cninfo");
+        assert_eq!(anns[1].ann_id, "9988");
+        assert_eq!(anns[1].url, None);
+        // Null/absent list → empty, not an error.
+        assert!(
+            parse_cninfo_announcements("sh600519", r#"{"announcements":null}"#)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
