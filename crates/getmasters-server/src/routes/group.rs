@@ -5,7 +5,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
 
-use getmasters_proto::{GroupPostRequest, GroupPostResult, SessionDto};
+use getmasters_proto::{GroupPostRequest, GroupPostResult, SessionDto, StartGroupSessionRequest};
 
 use crate::group;
 use crate::state::{AppError, AppState};
@@ -18,15 +18,22 @@ use crate::state::{AppError, AppState};
         ("id" = String, Path, description = "Project id"),
         ("slug" = String, Path, description = "Team slug"),
     ),
+    request_body(content = Option<StartGroupSessionRequest>, description = "Optional topic title"),
     responses((status = 200, description = "The new group session", body = SessionDto)),
     tag = "projects"
 )]
 pub async fn start(
     State(state): State<AppState>,
     Path((id, slug)): Path<(String, String)>,
+    body: Option<Json<StartGroupSessionRequest>>,
 ) -> Result<Json<SessionDto>, AppError> {
     state.agent.store().get_project(&id)?;
-    let session = group::start(&state, &id, &slug, None)
+    let title = body
+        .as_ref()
+        .and_then(|b| b.title.as_deref())
+        .map(str::trim)
+        .filter(|t| !t.is_empty());
+    let session = group::start(&state, &id, &slug, title)
         .map_err(|e| AppError::new(StatusCode::NOT_FOUND, e))?;
     Ok(Json(session))
 }

@@ -8,6 +8,45 @@
  */
 
 const dict = {
+  // --- shell / navigation (docs/12 §2: navigation is the user's nouns) ---
+  "nav.ask": { zh: "问大师", en: "Ask" },
+  "nav.settings": { zh: "设置", en: "Settings" },
+  "sidebar.newTopic": { zh: "新话题", en: "New topic" },
+  "sidebar.noTopics": { zh: "还没有话题。", en: "No topics yet." },
+  "sidebar.deleteTopic": { zh: "删除话题", en: "Delete topic" },
+  "sidebar.untitledTopic": { zh: "未命名话题", en: "Untitled topic" },
+  "sidebar.guarding": { zh: "守护中 · 本地", en: "Guarding · local" },
+  "sidebar.connecting": { zh: "连接中…", en: "connecting…" },
+  "sidebar.collapse": { zh: "收起侧栏", en: "Collapse sidebar" },
+  "sidebar.expand": { zh: "展开侧栏", en: "Expand sidebar" },
+  // --- 问大师 (ask home) ---
+  "ask.greeting": { zh: "今天想弄明白什么？", en: "What would you like to understand today?" },
+  "ask.placeholder": {
+    zh: "问点什么…（@某位大师 指名回答；Shift+Enter 换行）",
+    en: "Ask something…  (@a master to address one · Shift+Enter for a new line)",
+  },
+  "ask.send": { zh: "发送", en: "Send" },
+  "ask.rounds.auto": { zh: "轮次：自动", en: "Rounds: auto" },
+  "ask.rounds.n": { zh: "轮", en: "round(s)" },
+  "ask.loading": { zh: "正在唤醒守护…", en: "Waking the guardian…" },
+  "ask.coordinatorHint": { zh: "不@任何人时由首席顾问回答", en: "Unaddressed questions go to the coordinator" },
+  "ask.error": { zh: "出错了：", en: "Something went wrong: " },
+  // --- lab (advanced workbench) ---
+  "lab.title": { zh: "高级工作台", en: "Advanced workbench" },
+  "lab.chat": { zh: "通用对话", en: "General chat" },
+  "lab.projects": { zh: "项目", en: "Projects" },
+  "lab.masters": { zh: "大师管理", en: "Masters hub" },
+  "lab.newChat": { zh: "新对话", en: "New chat" },
+  "settings.openLab": { zh: "打开高级工作台", en: "Open the advanced workbench" },
+  "settings.labHint": {
+    zh: "通用对话、项目与大师管理等幕后能力",
+    en: "General chat, projects, and master management",
+  },
+  "settings.language": { zh: "语言", en: "Language" },
+  "settings.languageHint": {
+    zh: "界面语言（切换后刷新生效）",
+    en: "Interface language (reloads to apply)",
+  },
   "nav.watch": { zh: "关注", en: "Watch" },
   "watch.title": { zh: "关注", en: "Watching" },
   "watch.subtitle": {
@@ -43,6 +82,26 @@ const dict = {
   "watch.stateWatching": { zh: "关注中", en: "watching" },
   "watch.stateHolding": { zh: "持有", en: "holding" },
   "watch.stateSold": { zh: "已卖出", en: "sold" },
+  "watch.section.holding": { zh: "持有", en: "Holding" },
+  "watch.section.watching": { zh: "关注中", en: "Watching" },
+  "watch.section.sold": { zh: "已卖出", en: "Sold" },
+  "watch.reasonPrefix": { zh: "你当时关心：", en: "You cared because: " },
+  "watch.ask": { zh: "就此提问", en: "Ask about" },
+  "watch.unvalued": { zh: "未估值", en: "unvalued" },
+  "watch.qty": { zh: "数量", en: "Quantity" },
+  "watch.cost": { zh: "成本", en: "Cost" },
+  "watch.value": { zh: "市值", en: "Value" },
+  "watch.weight": { zh: "权重", en: "Weight" },
+  "briefings.today": { zh: "今天", en: "Today" },
+  "briefings.yesterday": { zh: "昨天", en: "Yesterday" },
+  "briefings.type.weekly": { zh: "周报", en: "Weekly" },
+  "briefings.type.mover": { zh: "异动", en: "Mover" },
+  "briefings.type.earnings": { zh: "财报", en: "Earnings" },
+  "briefings.quiet.title": { zh: "最近没什么需要你操心的", en: "Nothing needs your attention" },
+  "briefings.quiet.hint": {
+    zh: "有值得说的才会出现在这里——安静，是守护在正常工作。",
+    en: "Briefings appear only when something is worth saying — quiet means the guardian is doing its job.",
+  },
   "disclaimer.footer": {
     zh: "ⓘ 以上为事实与风险梳理，不构成投资建议",
     en: "ⓘ Facts and risk notes only — not investment advice",
@@ -75,9 +134,11 @@ export function getLocale(): Locale {
   } catch {
     // storage unavailable (e.g. tests) — fall through to navigator
   }
-  return typeof navigator !== "undefined" && navigator.language?.toLowerCase().startsWith("zh")
-    ? "zh"
-    : "en";
+  // 中文优先 (docs/12 §1.8): the product speaks Chinese by default; English is the explicit
+  // opt-in via Settings (or an English-language browser).
+  return typeof navigator !== "undefined" && navigator.language?.toLowerCase().startsWith("en")
+    ? "en"
+    : "zh";
 }
 
 export function setLocale(locale: Locale): void {

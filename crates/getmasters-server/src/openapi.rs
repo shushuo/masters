@@ -17,7 +17,7 @@ use getmasters_proto::{
     RunMasterRequest, RunRecipeRequest, RunTeamRequest, ScheduleDto, ScheduledRunDto, SecretUpdate,
     SendMessageRequest, ServerEvent, SessionDto, SetConnectorEnabledRequest, SetExtensionRequest,
     SetInstructionsRequest, SetScheduleRequest, SettingsDto, SettingsUpdate, SkillDto,
-    StudyPlanDto, TeamBundle, TeamDto, TeamRunResult, TeamSummaryDto,
+    StartGroupSessionRequest, StudyPlanDto, TeamBundle, TeamDto, TeamRunResult, TeamSummaryDto,
 };
 
 #[derive(OpenApi)]
@@ -162,6 +162,7 @@ use getmasters_proto::{
         TeamBundle,
         BundleImportResult,
         GroupPostRequest,
+        StartGroupSessionRequest,
         GroupPostResult,
         GroupMasterErrorDto,
         ConnectorDto,

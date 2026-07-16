@@ -1350,7 +1350,6 @@ export interface components {
             author: string;
             message: string;
         };
-        /** @description Body for `POST /sessions/{id}/group` — a user message into a group chat (Phase 4c, FR-43). */
         GroupPostRequest: {
             content: string;
             /**
@@ -1874,6 +1873,14 @@ export interface components {
             steps?: string;
             summary: string;
             tags?: string[];
+        };
+        /** @description Body for `POST /sessions/{id}/group` — a user message into a group chat (Phase 4c, FR-43). */
+        StartGroupSessionRequest: {
+            /**
+             * @description Optional session title (e.g. the first question, truncated) so the topic list is
+             *     recognizable; absent → the `group:<team>` default.
+             */
+            title?: string | null;
         };
         /** @description A project's active adaptive study plan, read-only for the UI (Phase 3b, FR-15). */
         StudyPlanDto: {
@@ -3319,7 +3326,12 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        /** @description Optional topic title */
+        requestBody?: {
+            content: {
+                "application/json": null | components["schemas"]["StartGroupSessionRequest"];
+            };
+        };
         responses: {
             /** @description The new group session */
             200: {

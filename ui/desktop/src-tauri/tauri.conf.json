@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Masters",
+  "productName": "大师 Masters",
   "version": "0.1.0",
   "identifier": "dev.shushuo.getmasters",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Masters",
+        "title": "大师 Masters",
         "width": 900,
         "height": 700,
         "resizable": true

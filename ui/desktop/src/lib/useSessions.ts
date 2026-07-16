@@ -1,14 +1,28 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MastersClient, SessionDto } from "../api/client";
 import type { Navigate, Route } from "./useHashRoute";
 
+/** Headless/system session-title prefixes that must never appear in user-facing lists. */
+const HIDDEN_PREFIXES = ["recipe:", "master:", "group:", "quick-"];
+
+function isListable(s: SessionDto): boolean {
+  const title = s.title ?? "";
+  return !HIDDEN_PREFIXES.some((p) => title.startsWith(p));
+}
+
 /**
- * Owns the chat-session list (lifted out of Chat.tsx so the Sidebar list and the Chat
- * pane share one source of truth). Also ensures a session exists when the user is on the
- * chat view without one — bootstrapping a fresh session and redirecting (replace) to
- * `#/chat/:id`. The bootstrap is guarded against React StrictMode's double-mount.
+ * Owns the session lists (lifted out of the panes so the Sidebar and the views share one
+ * source of truth). Splits the raw list into the two user-facing lists (docs/12 §2):
+ *  - `topics` — 问大师 topics: team-bound sessions of the investing team,
+ *  - `labSessions` — generic (non-team) chats for the advanced workbench.
+ * Also bootstraps a generic session when the user lands on lab-chat without one.
  */
-export function useSessions(client: MastersClient | null, route: Route, navigate: Navigate) {
+export function useSessions(
+  client: MastersClient | null,
+  route: Route,
+  navigate: Navigate,
+  investingTeamSlug: string | null,
+) {
   const [sessions, setSessions] = useState<SessionDto[]>([]);
   const creating = useRef(false);
 
@@ -21,12 +35,28 @@ export function useSessions(client: MastersClient | null, route: Route, navigate
     }
   }, [client]);
 
-  const newChat = useCallback(
+  const topics = useMemo(
+    () =>
+      sessions.filter(
+        (s) =>
+          s.team_slug != null &&
+          (investingTeamSlug == null || s.team_slug === investingTeamSlug) &&
+          isListable(s),
+      ),
+    [sessions, investingTeamSlug],
+  );
+
+  const labSessions = useMemo(
+    () => sessions.filter((s) => s.team_slug == null && isListable(s)),
+    [sessions],
+  );
+
+  const newLabChat = useCallback(
     async (opts?: { replace?: boolean }): Promise<string | null> => {
       if (!client) return null;
       const s = await client.createSession("Desktop chat");
       await refresh();
-      navigate({ view: "chat", sessionId: s.id }, opts);
+      navigate({ view: "lab", labTab: "chat", sessionId: s.id }, opts);
       return s.id;
     },
     [client, refresh, navigate],
@@ -35,16 +65,15 @@ export function useSessions(client: MastersClient | null, route: Route, navigate
   const deleteSession = useCallback(
     async (id: string) => {
       if (!client) return;
-      const remaining = sessions.filter((s) => s.id !== id);
       await client.deleteSession(id);
       await refresh();
-      // If we deleted the active session, move to the next one (or a fresh chat).
-      if (route.view === "chat" && route.sessionId === id) {
-        if (remaining[0]) navigate({ view: "chat", sessionId: remaining[0].id });
-        else navigate({ view: "chat" });
+      // If we deleted the active topic/chat, fall back to the view's empty state.
+      if (route.sessionId === id) {
+        if (route.view === "ask") navigate({ view: "ask" });
+        else if (route.view === "lab") navigate({ view: "lab", labTab: "chat" });
       }
     },
-    [client, sessions, route, refresh, navigate],
+    [client, route, refresh, navigate],
   );
 
   // Initial list load.
@@ -52,14 +81,23 @@ export function useSessions(client: MastersClient | null, route: Route, navigate
     refresh();
   }, [refresh]);
 
-  // Ensure a session exists whenever we land on chat without one.
+  // Ensure a generic session exists whenever we land on lab-chat without one.
+  // (问大师 deliberately does NOT bootstrap — its empty state is the new-topic screen;
+  // the topic session is created on first send.)
   useEffect(() => {
-    if (!client || route.view !== "chat" || route.sessionId || creating.current) return;
+    if (
+      !client ||
+      route.view !== "lab" ||
+      (route.labTab ?? "chat") !== "chat" ||
+      route.sessionId ||
+      creating.current
+    )
+      return;
     creating.current = true;
-    newChat({ replace: true }).finally(() => {
+    newLabChat({ replace: true }).finally(() => {
       creating.current = false;
     });
-  }, [client, route.view, route.sessionId, newChat]);
+  }, [client, route.view, route.labTab, route.sessionId, newLabChat]);
 
-  return { sessions, refresh, newChat, deleteSession };
+  return { sessions, topics, labSessions, refresh, newLabChat, deleteSession };
 }

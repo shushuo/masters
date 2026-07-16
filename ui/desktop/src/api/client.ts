@@ -670,10 +670,11 @@ export class MastersClient {
   }
 
   /** Start a group chat session bound to a team (Phase 4c). */
-  async startTeamSession(projectId: string, slug: string): Promise<SessionDto> {
+  async startTeamSession(projectId: string, slug: string, title?: string): Promise<SessionDto> {
     const res = await fetch(`${this.base()}/projects/${projectId}/teams/${slug}/session`, {
       method: "POST",
-      headers: this.headers(),
+      headers: { ...this.headers(), "content-type": "application/json" },
+      body: JSON.stringify({ title: title ?? null }),
     });
     if (!res.ok) throw new Error(`startTeamSession failed: ${res.status}`);
     return res.json();

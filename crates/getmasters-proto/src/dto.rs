@@ -468,6 +468,14 @@ pub struct BundleImportResult {
 
 /// Body for `POST /sessions/{id}/group` — a user message into a group chat (Phase 4c, FR-43).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, ToSchema)]
+pub struct StartGroupSessionRequest {
+    /// Optional session title (e.g. the first question, truncated) so the topic list is
+    /// recognizable; absent → the `group:<team>` default.
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 pub struct GroupPostRequest {
     pub content: String,
     /// Optional per-call cap on mention-driven follow-up rounds (Phase 4f). Clamped into `1..=5`;

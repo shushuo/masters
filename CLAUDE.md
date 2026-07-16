@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Current state: Phase 0 + Phase 1 + Phase 2 (2a/2b/2c) + Phase 3a/3b (Study) + 3c (Recipes) + 3d (Scheduler) + 3e (Delivery) + 4a (Masters) + 4b (Teams + router) + 4c (Group chat) + 4d (External MCP) + 4e (Group streaming) + 4f (Multi-round) + 4g (Group tool visibility) + 4h (Portable bundles) + 4i (External ACP master agents) + Desktop UI (design system, full management UI, ACP selector, chat history, audit viewer, theme toggle, group max-rounds) + Masters sidebar (standalone/global masters + system templates + quick chat) + Hardening pass (loop robustness, i18n, event log, ACP gate) + Investing vertical slice 1 (assets+market servers, expert-team pack, ask→track loop, Watch UI) + slice 2 (proactive touch: weekly digest + mover sentinel recipes w/ silent-pass, briefings feed) + slice 3 (earnings sentinel on cninfo disclosures) + slice 4 (progressive ledger + FinCalc portfolio unlock) implemented
+## Current state: Phase 0 + Phase 1 + Phase 2 (2a/2b/2c) + Phase 3a/3b (Study) + 3c (Recipes) + 3d (Scheduler) + 3e (Delivery) + 4a (Masters) + 4b (Teams + router) + 4c (Group chat) + 4d (External MCP) + 4e (Group streaming) + 4f (Multi-round) + 4g (Group tool visibility) + 4h (Portable bundles) + 4i (External ACP master agents) + Desktop UI (design system, full management UI, ACP selector, chat history, audit viewer, theme toggle, group max-rounds) + Masters sidebar (standalone/global masters + system templates + quick chat) + Hardening pass (loop robustness, i18n, event log, ACP gate) + Investing vertical slice 1 (assets+market servers, expert-team pack, ask→track loop, Watch UI) + slice 2 (proactive touch: weekly digest + mover sentinel recipes w/ silent-pass, briefings feed) + slice 3 (earnings sentinel on cninfo disclosures) + slice 4 (progressive ledger + FinCalc portfolio unlock) + 《大师》UI/UX redesign (investing-first IA, paper-and-ink design language, 问大师 home) implemented
 
 **Phase 0 (Foundations)** and **Phase 1a** are in place (see `docs/08-roadmap.md` and
 `DEVELOPMENT.md`): a Rust Cargo workspace under `crates/` (`getmasters-proto`, `getmasters-core`,
@@ -454,6 +454,26 @@ known, else honestly unvalued; provenance carried), hosted as the **FinCalcServe
 /projects/{id}/portfolio` (`PortfolioDto`), the Watch-page portfolio strip (unlocks once a holding
 exists), and the 配置规划师 `allocation` master joining the standing team (roster now
 chief/analyst/risk/allocation/coach; coach carries the record-after-confirm 轻提议 mandate).
+**《大师》UI/UX redesign** (docs/12-ux-redesign.md — the now-authoritative UI/UX spec; docs/10
+records the generic-shell era): the desktop is **investing-first end-to-end**. IA = the user's
+nouns — 问大师 `#/ask` (home; the standing expert-team group chat with a sidebar topic list) /
+关注 `#/watch` / 动静 `#/briefings` / 设置; the generic surfaces (single-agent Chat, Projects,
+MastersHub) live on under 高级工作台 `#/lab/...` (`Lab.tsx` thin shell; legacy `#/chat`/
+`#/projects`/`#/masters` deep links parse into lab sub-routes). Visual language = 新中式极简
+宣纸与墨 tokens (warm paper surfaces, ink text, 黛青 accent; gain/loss CN convention kept) + a
+serif CJK `--font-display` (system stack) + a seal-style 「大」 wordmark (panda retired, D12) —
+all in `index.css`/`Brand.tsx`. 问大师: `AskHome.tsx` wraps a generalized `GroupChat.tsx`
+(resume via new `sessionId` prop + `listMessages` replay; roster identity `lib/masters.ts`
+slug→中文名+色 avatars; empty state = 大师一句 `lib/quotes.ts` daily quote + bait questions;
+compliance footer above the composer). Topics are recognizable via one small additive backend
+seam: `POST /projects/{id}/teams/{slug}/session` now accepts an optional
+`StartGroupSessionRequest{title}` (first question, truncated). Watch = lifecycle sections
+(持有 w/ portfolio strip + valued position cards, 关注中 w/ reason-led cards) + per-card
+就此提问 → ask prefill (App-level `askDraft`); Briefings = day-grouped timeline w/ type badges +
+the calm positive quiet state + an unread nav dot (localStorage seen-mark). zh-first i18n across
+all redesigned surfaces (default locale zh; Settings gains 语言 + workbench rows); Onboarding
+carries the three promises (数字有来源/数据留本机/不荐股). Verified headless via Playwright
+walkthrough (onboarding/ask/watch/briefings/lab redirect, light+dark).
 **Deferred within the vertical:** the cloud cross-section snapshot
 + weekly bulletin + daily master-quote pack, unread state on briefings, JournalServer,
 sell/close flows + coached quarterly reviews (hypothetical returns live only there, D10), redaction
@@ -508,6 +528,7 @@ The docs are numbered and meant to be read in order; later docs depend on earlie
 - `docs/09-projects-masters.md` — Project as a context container + Masters (persona-over-Skill) + Master Teams
 - `docs/10-ui-design.md` — desktop UI design system as implemented (tokens/layout/components/interaction) + Manus/Claude-Cowork benchmark + prioritized enhancement plan
 - `docs/11-investment-agent.md` — the investing-vertical product positioning & design (《大师》 pivot; 13 settled product decisions D1–D13; design-only, not yet implemented)
+- `docs/12-ux-redesign.md` — the 《大师》 desktop UI/UX redesign (authoritative: principles/IA/screens/tokens/brand; supersedes docs/10)
 - `docs/adr/0001..0018` — the binding decisions; treat these as authoritative (0006–0009 are the Hermes-informed refinements; 0010–0012 are the WorkBuddy-informed Project/Master-Team additions, 0012 = the multi-master group-chat communication model; 0013 = per-master model selection; 0014 = external ACP master agents; 0015–0018 = the investing-vertical decisions from docs/11 — domain packs, asset lifecycle, market-data supply, provider vision)
 
 Diagrams are **mermaid** embedded in markdown.

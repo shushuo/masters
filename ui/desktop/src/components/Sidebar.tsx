@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  FolderKanban,
   MessagesSquare,
   Newspaper,
   Star,
@@ -12,49 +11,50 @@ import {
   Settings as SettingsIcon,
   Sun,
   Trash2,
-  UserRound,
   type LucideIcon,
 } from "lucide-react";
 import type { MastersClient, HealthDto, SessionDto } from "../api/client";
-import { IconButton, PandaMark } from "./ui";
+import { IconButton, Wordmark } from "./ui";
 import { cn } from "./ui/cn";
 import { applyTheme, getTheme, nextTheme, type Theme } from "../lib/theme";
 import type { View } from "../lib/useHashRoute";
 import { t } from "../lib/i18n";
 
-const NAV: { key: View; label: string; icon: LucideIcon }[] = [
-  { key: "chat", label: "Chat", icon: MessagesSquare },
-  { key: "watch", label: t("nav.watch"), icon: Star },
-  { key: "briefings", label: t("nav.briefings"), icon: Newspaper },
-  { key: "masters", label: "Masters", icon: UserRound },
-  { key: "projects", label: "Projects", icon: FolderKanban },
-];
-
-/** Compact relative time for the session list (no i18n dep). */
+/** Compact relative time for the topic list. */
 function formatRelative(ts: number): string {
   const s = Math.round((Date.now() - ts) / 1000);
-  if (s < 60) return "just now";
+  if (s < 60) return "刚刚";
   const m = Math.round(s / 60);
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return `${m} 分钟前`;
   const h = Math.round(m / 60);
-  if (h < 24) return `${h}h ago`;
+  if (h < 24) return `${h} 小时前`;
   const d = Math.round(h / 24);
-  if (d < 7) return `${d}d ago`;
+  if (d < 7) return `${d} 天前`;
   return new Date(ts).toLocaleDateString();
 }
 
-/** A single nav-rail entry — shared by the top content nav and the pinned-bottom Settings entry. */
+/** A topic's display title: the saved title, unless it's a system default. */
+function topicTitle(s: SessionDto): string {
+  const title = (s.title ?? "").trim();
+  if (!title || title.startsWith("group:")) return t("sidebar.untitledTopic");
+  return title;
+}
+
+/** A single nav-rail entry — shared by the primary nav and the pinned-bottom Settings entry. */
 function NavButton({
   active,
   label,
   icon: Icon,
   collapsed,
+  dot,
   onClick,
 }: {
   active: boolean;
   label: string;
   icon: LucideIcon;
   collapsed: boolean;
+  /** A quiet unread hint (docs/12 §4: one 2px dot, never a count badge). */
+  dot?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -71,42 +71,50 @@ function NavButton({
           : "text-muted hover:bg-surface-2 hover:text-text",
       )}
     >
-      <Icon className="size-4 shrink-0" aria-hidden />
+      <span className="relative inline-flex shrink-0">
+        <Icon className="size-4" aria-hidden />
+        {dot && (
+          <span
+            className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-accent"
+            aria-hidden
+          />
+        )}
+      </span>
       {!collapsed && <span>{label}</span>}
     </button>
   );
 }
 
-/** The chat-session list, shown under the Chat nav item when the Chat view is active. */
-function SessionList({
-  sessions,
+/** The 问大师 topic list, shown under the Ask nav item when the Ask view is active. */
+function TopicList({
+  topics,
   activeSessionId,
   busy,
   onSelect,
-  onNewChat,
+  onNewTopic,
   onDelete,
 }: {
-  sessions: SessionDto[];
+  topics: SessionDto[];
   activeSessionId: string | null;
   busy: boolean;
   onSelect: (id: string) => void;
-  onNewChat: () => void;
+  onNewTopic: () => void;
   onDelete: (id: string) => void;
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col px-2">
       <button
-        onClick={onNewChat}
+        onClick={onNewTopic}
         disabled={busy}
         className="mb-1 flex items-center gap-2 rounded-sm px-2.5 py-1.5 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:opacity-50"
       >
-        <Plus className="size-4 shrink-0" aria-hidden /> New chat
+        <Plus className="size-4 shrink-0" aria-hidden /> {t("sidebar.newTopic")}
       </button>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {sessions.length === 0 ? (
-          <p className="px-2.5 py-1 text-xs text-faint">No chats yet.</p>
+        {topics.length === 0 ? (
+          <p className="px-2.5 py-1 text-xs text-faint">{t("sidebar.noTopics")}</p>
         ) : (
-          sessions.map((s) => {
+          topics.map((s) => {
             const active = s.id === activeSessionId;
             return (
               <div
@@ -128,12 +136,12 @@ function SessionList({
                       active ? "font-medium text-accent" : "text-text",
                     )}
                   >
-                    {s.title || "Untitled"}
+                    {topicTitle(s)}
                   </span>
                   <span className="text-[11px] text-faint">{formatRelative(s.updated_at)}</span>
                 </button>
                 <IconButton
-                  label="Delete chat"
+                  label={t("sidebar.deleteTopic")}
                   onClick={() => onDelete(s.id)}
                   className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
                 >
@@ -149,9 +157,10 @@ function SessionList({
 }
 
 /**
- * Notion-style left rail: brand, primary navigation, a contextual chat-session list, and a
- * daemon-status footer. Owns no routing state — App.tsx passes the active view + navigation
- * callbacks (and, for the Chat view, the session list + its actions) down.
+ * The 《大师》 left rail (docs/12 §2/§3): wordmark, the three user-noun nav items
+ * (问大师 / 关注 / 动静), the contextual topic list, pinned Settings + theme, and the
+ * guardian-status footer. Owns no routing state — App.tsx passes the active view +
+ * navigation callbacks down.
  */
 export function Sidebar({
   health,
@@ -160,12 +169,13 @@ export function Sidebar({
   onToggleCollapse,
   onNavigate,
   client,
-  sessions,
+  topics,
   activeSessionId,
   busy,
-  onSelectSession,
-  onNewChat,
-  onDeleteSession,
+  hasNewBriefings,
+  onSelectTopic,
+  onNewTopic,
+  onDeleteTopic,
 }: {
   health: HealthDto | null;
   view: View;
@@ -173,26 +183,33 @@ export function Sidebar({
   onToggleCollapse: () => void;
   onNavigate: (view: View) => void;
   client: MastersClient | null;
-  sessions: SessionDto[];
+  topics: SessionDto[];
   activeSessionId: string | null;
   busy: boolean;
-  onSelectSession: (id: string) => void;
-  onNewChat: () => void;
-  onDeleteSession: (id: string) => void;
+  hasNewBriefings: boolean;
+  onSelectTopic: (id: string) => void;
+  onNewTopic: () => void;
+  onDeleteTopic: (id: string) => void;
 }) {
-  const showSessions = view === "chat" && !collapsed && client != null;
+  const showTopics = view === "ask" && !collapsed && client != null;
 
-  // ⌘/Ctrl+N starts a new chat from anywhere.
+  const nav: { key: View; label: string; icon: LucideIcon; dot?: boolean }[] = [
+    { key: "ask", label: t("nav.ask"), icon: MessagesSquare },
+    { key: "watch", label: t("nav.watch"), icon: Star },
+    { key: "briefings", label: t("nav.briefings"), icon: Newspaper, dot: hasNewBriefings },
+  ];
+
+  // ⌘/Ctrl+N starts a new topic from anywhere.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
         e.preventDefault();
-        if (!busy) onNewChat();
+        if (!busy) onNewTopic();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [busy, onNewChat]);
+  }, [busy, onNewTopic]);
 
   return (
     <aside
@@ -203,12 +220,13 @@ export function Sidebar({
     >
       {/* Brand */}
       <div className="flex items-center gap-2 px-3 py-3">
-        <PandaMark className="size-6 shrink-0" />
-        {!collapsed && (
-          <span className="flex-1 text-base font-semibold tracking-tight text-text">Masters</span>
+        {collapsed ? (
+          <Wordmark size="sm" className="mx-auto [&>*:not(:first-child)]:hidden" />
+        ) : (
+          <Wordmark size="md" className="flex-1" />
         )}
         <IconButton
-          label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          label={collapsed ? t("sidebar.expand") : t("sidebar.collapse")}
           onClick={onToggleCollapse}
           className={collapsed ? "mx-auto" : ""}
         >
@@ -219,28 +237,29 @@ export function Sidebar({
       {/* Primary nav */}
       {client && (
         <nav className="flex flex-col gap-0.5 px-2 py-1">
-          {NAV.map(({ key, label, icon }) => (
+          {nav.map(({ key, label, icon, dot }) => (
             <NavButton
               key={key}
               active={view === key}
               label={label}
               icon={icon}
               collapsed={collapsed}
+              dot={dot}
               onClick={() => onNavigate(key)}
             />
           ))}
         </nav>
       )}
 
-      {/* Contextual chat-session list (Chat view only), else a flexible spacer. */}
-      {showSessions ? (
-        <SessionList
-          sessions={sessions}
+      {/* Contextual topic list (Ask view only), else a flexible spacer. */}
+      {showTopics ? (
+        <TopicList
+          topics={topics}
           activeSessionId={activeSessionId}
           busy={busy}
-          onSelect={onSelectSession}
-          onNewChat={onNewChat}
-          onDelete={onDeleteSession}
+          onSelect={onSelectTopic}
+          onNewTopic={onNewTopic}
+          onDelete={onDeleteTopic}
         />
       ) : (
         <div className="flex-1" />
@@ -257,7 +276,7 @@ export function Sidebar({
           <div className={collapsed ? "" : "flex-1"}>
             <NavButton
               active={view === "settings"}
-              label="Settings"
+              label={t("nav.settings")}
               icon={SettingsIcon}
               collapsed={collapsed}
               onClick={() => onNavigate("settings")}
@@ -268,13 +287,17 @@ export function Sidebar({
         </div>
       )}
 
-      {/* Daemon status footer */}
+      {/* Guardian status footer (docs/12 §6: 「守护中 · 本地」). */}
       <div
         className={cn(
           "flex items-center gap-2 border-t border-border px-3 py-2.5 text-xs text-faint",
           collapsed && "justify-center",
         )}
-        title={health ? `daemon ok · ${health.provider} · v${health.version}` : "connecting…"}
+        title={
+          health
+            ? `${t("sidebar.guarding")} · ${health.provider} · v${health.version}`
+            : t("sidebar.connecting")
+        }
       >
         <span
           className={cn(
@@ -285,7 +308,7 @@ export function Sidebar({
         />
         {!collapsed && (
           <span className="truncate">
-            {health ? `${health.provider} · v${health.version}` : "connecting…"}
+            {health ? t("sidebar.guarding") : t("sidebar.connecting")}
           </span>
         )}
       </div>

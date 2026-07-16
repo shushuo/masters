@@ -1,5 +1,10 @@
 # 10 — UI / UX Design System
 
+> **Superseded by `docs/12-ux-redesign.md`** (the 《大师》 investing-first redesign: IA, screens,
+> tokens, brand). This document remains as the record of the generic-shell era and as reference
+> for the component infrastructure (primitives, theme plumbing) the redesign builds on. Where the
+> two disagree — token values, navigation, brand — docs/12 wins.
+
 This document is the pixel-level companion to `docs/07-ux-flows.md` (which stays wireframe-level).
 It records the **current** desktop design system as implemented under `ui/desktop/src/` — color
 tokens, layout, components, and interaction principles — then benchmarks it against the products
