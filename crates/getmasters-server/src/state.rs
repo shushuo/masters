@@ -24,13 +24,23 @@ pub const ALL_BUILTIN_SERVERS: &[&str] = &[
     "memory",
     "skills",
     "study",
+    "assets",
+    "market",
     "masters",
     "web",
 ];
 
 /// Built-in MCP servers actually implemented today. These are the toggleable extensions (FR-19);
 /// the rest are placeholders.
-pub const IMPLEMENTED_SERVERS: &[&str] = &["files", "knowledge", "memory", "skills", "study"];
+pub const IMPLEMENTED_SERVERS: &[&str] = &[
+    "files",
+    "knowledge",
+    "memory",
+    "skills",
+    "study",
+    "assets",
+    "market",
+];
 
 /// `settings` key holding the system default project id (backs quick chat; see
 /// [`AppState::ensure_default_project`]).
@@ -58,6 +68,9 @@ pub struct AppState {
     /// SMTP transport for outbound email delivery (Phase 3e, FR-27). The live daemon uses the real
     /// `lettre` transport; tests inject a capturing fake.
     pub email: Arc<dyn crate::delivery::EmailTransport>,
+    /// Market-data upstream adapter (investing vertical, ADR-0017). The live daemon uses the
+    /// Eastmoney adapter; tests inject the core `FixtureFetcher`.
+    pub market: Arc<dyn getmasters_core::market::MarketFetcher>,
     /// Lazily-built, per-project agents (files + knowledge enabled), keyed by project id.
     session_agents: Arc<Mutex<HashMap<String, AgentService>>>,
 }
@@ -73,8 +86,18 @@ impl AppState {
             secrets: Arc::new(MemoryStore::new()),
             cfg: Config::default(),
             email: crate::delivery::default_transport(),
+            market: crate::market_fetch::default_fetcher(),
             session_agents: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    /// Use a specific market-data fetcher (tests inject the core fixture).
+    pub fn with_market_fetcher(
+        mut self,
+        market: Arc<dyn getmasters_core::market::MarketFetcher>,
+    ) -> Self {
+        self.market = market;
+        self
     }
 
     /// Use a specific secret store (the daemon supplies the OS keychain).
@@ -143,7 +166,7 @@ impl AppState {
             project_dir.clone(),
             &enabled,
             &connectors,
-            None,
+            Some(self.market.clone()),
         )
         .await?;
         let agent = self
