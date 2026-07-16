@@ -68,6 +68,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/investing/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ensure_investing_workspace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/masters": {
         parameters: {
             query?: never;
@@ -175,6 +191,38 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_project_assets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/assets/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["untrack_project_asset"];
         options?: never;
         head?: never;
         patch?: never;
@@ -380,6 +428,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["list_project_memories"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/quotes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_project_quotes"];
         put?: never;
         post?: never;
         delete?: never;
@@ -879,6 +943,29 @@ export interface components {
             path: string;
         };
         /**
+         * @description One tracked instrument on the asset lifecycle spine (investing vertical, ADR-0016).
+         *     `state`: `watching` | `holding` | `sold`. The snapshot fields are the first-interest record.
+         */
+        AssetDto: {
+            /** @description `"stock"` | `"fund"`. */
+            kind: string;
+            market: string;
+            name: string;
+            /** @description `YYYY-MM-DD` the snapshot price is for. */
+            snapshot_date?: string | null;
+            /** Format: double */
+            snapshot_price?: number | null;
+            state: string;
+            /** @description Canonical symbol, e.g. `sh600519`. */
+            symbol: string;
+            watch_reason?: string | null;
+            /**
+             * Format: int64
+             * @description Epoch ms of first interest.
+             */
+            watched_at: number;
+        };
+        /**
          * @description One audit-log entry: a gated tool call with its permission outcome (docs/06). Read-only;
          *     surfaced per session so the user can see what was auto-allowed, approved, or denied.
          */
@@ -1254,6 +1341,15 @@ export interface components {
             /** @description Daemon crate version. */
             version: string;
         };
+        /** @description The seeded investing workspace (docs/11): the default project + the standing expert team. */
+        InvestingWorkspaceDto: {
+            /** @description The coordinator master slug (answers unaddressed messages). */
+            coordinator: string;
+            /** @description Member master slugs. */
+            members: string[];
+            project_id: string;
+            team_slug: string;
+        };
         /** @description A project's knowledge-index status + its indexed documents. */
         KnowledgeStatusDto: {
             /** Format: int64 */
@@ -1386,6 +1482,32 @@ export interface components {
          */
         QuickChatRequest: {
             masters: string[];
+        };
+        /**
+         * @description A market quote with provenance (ADR-0017). `stale` = an old cached value served because a
+         *     refresh failed — the UI must render this honestly, never hide it.
+         */
+        QuoteDto: {
+            /** Format: double */
+            change_pct?: number | null;
+            /** Format: double */
+            close?: number | null;
+            /**
+             * Format: int64
+             * @description Epoch ms.
+             */
+            fetched_at: number;
+            name?: string | null;
+            /** Format: double */
+            prev_close?: number | null;
+            /** @description Adapter id, e.g. `eastmoney`. */
+            source: string;
+            stale: boolean;
+            symbol: string;
+            /** @description `YYYY-MM-DD` the quote is for. */
+            trade_date: string;
+            /** @description `"unverified"` | `"verified"` | `"disputed"`. */
+            validation: string;
         };
         /** @description One master ranked by the router against a brief. */
         RankedMasterDto: {
@@ -1809,6 +1931,26 @@ export interface operations {
             };
         };
     };
+    ensure_investing_workspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The (idempotently seeded) investing workspace */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvestingWorkspaceDto"];
+                };
+            };
+        };
+    };
     list_global_masters: {
         parameters: {
             query?: never;
@@ -2049,6 +2191,66 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProjectDto"];
                 };
+            };
+        };
+    };
+    list_project_assets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The project's tracked assets (newest interest first) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetDto"][];
+                };
+            };
+        };
+    };
+    untrack_project_asset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                id: string;
+                /** @description Canonical symbol (e.g. sh600519) */
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No longer watching */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not watching this symbol */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Lifecycle-guarded: the asset is a holding/sold ledger entry */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -2479,6 +2681,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MemoryDto"][];
+                };
+            };
+        };
+    };
+    list_project_quotes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                id: string;
+                /** @description Comma-separated symbols (canonical or common forms), capped at 30. */
+                symbols: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Latest EOD quotes with provenance; unavailable symbols are omitted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteDto"][];
                 };
             };
         };

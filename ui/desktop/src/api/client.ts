@@ -50,6 +50,9 @@ export type EmailSettingsUpdate = components["schemas"]["EmailSettingsUpdate"];
 export type ProjectDto = components["schemas"]["ProjectDto"];
 export type ExtensionDto = components["schemas"]["ExtensionDto"];
 export type KnowledgeStatusDto = components["schemas"]["KnowledgeStatusDto"];
+export type AssetDto = components["schemas"]["AssetDto"];
+export type QuoteDto = components["schemas"]["QuoteDto"];
+export type InvestingWorkspaceDto = components["schemas"]["InvestingWorkspaceDto"];
 
 /** Connection details handed over by the daemon handshake (`GETMASTERSD_READY`). */
 export interface DaemonConn {
@@ -265,6 +268,46 @@ export class MastersClient {
       headers: this.headers(),
     });
     if (!res.ok) throw new Error(`listDecks failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** Idempotently seed the investing workspace (default project + expert team). */
+  async ensureInvestingWorkspace(): Promise<InvestingWorkspaceDto> {
+    const res = await fetch(`${this.base()}/investing/workspace`, {
+      method: "POST",
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`ensureInvestingWorkspace failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** The project's tracked assets (newest interest first). */
+  async listAssets(projectId: string): Promise<AssetDto[]> {
+    const res = await fetch(`${this.base()}/projects/${projectId}/assets`, {
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`listAssets failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** Stop watching a symbol (the one-click revocation of a silent track). */
+  async untrackAsset(projectId: string, symbol: string): Promise<void> {
+    const res = await fetch(
+      `${this.base()}/projects/${projectId}/assets/${encodeURIComponent(symbol)}`,
+      { method: "DELETE", headers: this.headers() },
+    );
+    if (!res.ok) throw new Error(`untrackAsset failed: ${res.status}`);
+  }
+
+  /** Latest EOD quotes with provenance; unavailable symbols are omitted, never invented. */
+  async listQuotes(projectId: string, symbols: string[]): Promise<QuoteDto[]> {
+    if (symbols.length === 0) return [];
+    const qs = encodeURIComponent(symbols.join(","));
+    const res = await fetch(
+      `${this.base()}/projects/${projectId}/quotes?symbols=${qs}`,
+      { headers: this.headers() },
+    );
+    if (!res.ok) throw new Error(`listQuotes failed: ${res.status}`);
     return res.json();
   }
 

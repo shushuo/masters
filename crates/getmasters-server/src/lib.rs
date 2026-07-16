@@ -67,6 +67,13 @@ pub fn build_app(state: AppState) -> Router {
         )
         .route("/projects/{id}/skills", get(routes::projects::list_skills))
         .route("/projects/{id}/decks", get(routes::projects::list_decks))
+        .route("/investing/workspace", post(routes::investing::ensure_workspace))
+        .route("/projects/{id}/assets", get(routes::investing::list_assets))
+        .route(
+            "/projects/{id}/assets/{symbol}",
+            axum::routing::delete(routes::investing::untrack_asset),
+        )
+        .route("/projects/{id}/quotes", get(routes::investing::list_quotes))
         .route(
             "/projects/{id}/study-plan",
             get(routes::projects::study_plan),
