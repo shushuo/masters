@@ -112,6 +112,7 @@ async fn learn(grant: &std::path::Path) -> anyhow::Result<()> {
         project_dir.clone(),
         &all_servers(),
         &[],
+        None,
     )
     .await
     .map_err(|e| anyhow::anyhow!("failed to host project servers: {e}"))?;
@@ -183,6 +184,7 @@ async fn knowledge(grant: &std::path::Path, ask: &str) -> anyhow::Result<()> {
         project_dir.clone(),
         &all_servers(),
         &[],
+        None,
     )
     .await
     .map_err(|e| anyhow::anyhow!("failed to host project servers: {e}"))?;

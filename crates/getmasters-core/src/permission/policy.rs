@@ -18,9 +18,13 @@ pub fn classify(tool: &str) -> SideEffect {
     }
     let seg = tool.rsplit('.').next().unwrap_or(tool);
     match seg {
+        // `get_quote`/`search_symbol` are deliberately Read despite the server's injected
+        // upstream fetch (ADR-0017): public market data, zero user-data egress, results cached
+        // with provenance — classifying them Network would gate the D0 zero-friction first
+        // answer. Narrow ruling; revisit if a general-purpose web tool ever reuses the pattern.
         "read" | "list" | "search" | "recall" | "recall_skill" | "status" | "answer"
         | "list_skills" | "list_masters" | "route_brief" | "start_review" | "list_decks"
-        | "review_stats" => SideEffect::Read,
+        | "review_stats" | "get_quote" | "search_symbol" | "list_assets" => SideEffect::Read,
         // `forget` is a curation edit of a memory file (revert-eligible), not a destructive
         // delete of user data (docs/04 §2.4); only `files.delete` is destructive.
         "delete" => SideEffect::Destructive,
@@ -126,6 +130,13 @@ mod tests {
         assert_eq!(classify("filesystem.write_file"), SideEffect::Write);
         // Conventionally-named destructive/read verbs are still recognized across any prefix.
         assert_eq!(classify("notion.delete"), SideEffect::Destructive);
+        // Investing vertical (ADR-0016/0017): tracking writes are gated (silent only under
+        // headless dispatch — still audited); quote/search/list are reads.
+        assert_eq!(classify("assets.track_asset"), SideEffect::Write);
+        assert_eq!(classify("assets.untrack_asset"), SideEffect::Write);
+        assert_eq!(classify("assets.list_assets"), SideEffect::Read);
+        assert_eq!(classify("market.get_quote"), SideEffect::Read);
+        assert_eq!(classify("market.search_symbol"), SideEffect::Read);
     }
 
     #[test]

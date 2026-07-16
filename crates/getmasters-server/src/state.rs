@@ -143,6 +143,7 @@ impl AppState {
             project_dir.clone(),
             &enabled,
             &connectors,
+            None,
         )
         .await?;
         let agent = self

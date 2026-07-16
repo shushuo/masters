@@ -153,6 +153,7 @@ async fn extension_manager_hosts_files_and_knowledge() {
         project_dir,
         &enabled,
         &[],
+        None,
     )
     .await
     .unwrap();
