@@ -85,7 +85,10 @@ async fn workspace_seeds_idempotently_and_respects_user_masters() {
         .unwrap();
     assert_eq!(ws.team_slug, "investing");
     assert_eq!(ws.coordinator, "chief");
-    assert_eq!(ws.members, vec!["chief", "analyst", "risk", "coach"]);
+    assert_eq!(
+        ws.members,
+        vec!["chief", "analyst", "risk", "allocation", "coach"]
+    );
 
     // Seeded masters exist globally (system origin), the user-owned one is untouched.
     let chief = global.load("chief").unwrap().unwrap();
@@ -409,4 +412,62 @@ async fn group_master_tracks_asset_silently() {
     let transcript = store.list_messages(&session.id).unwrap();
     assert_eq!(transcript.len(), 2);
     assert_eq!(transcript[1].author, "analyst");
+}
+
+/// B4+B5 (ADR-0016 progressive ledger + FinCalc): record a partial holding, then the portfolio
+/// endpoint values what it can — and reports the rest unvalued instead of estimating.
+#[tokio::test]
+async fn portfolio_endpoint_values_recorded_holdings_honestly() {
+    let dir = temp_dir();
+    let store = Store::open_in_memory().unwrap();
+    let fetcher = Arc::new(FixtureFetcher::single("sh600519", "贵州茅台", 1700.0));
+    let state = state_with(&store, &dir, fetcher);
+    let pid = store.create_project("组合", None).unwrap();
+
+    let assets = getmasters_core::assets::AssetsStore::new(pid.clone(), store.clone());
+    assets
+        .record_position(
+            "sh600519",
+            "贵州茅台",
+            "cn-a",
+            "stock",
+            Some(100.0),
+            Some(1500.0),
+            None,
+        )
+        .unwrap();
+    // Progressive: a second holding the user hasn't quantified yet.
+    assets
+        .record_position("sz000001", "平安银行", "cn-a", "stock", None, None, None)
+        .unwrap();
+
+    let base = serve(state).await;
+    let client = reqwest::Client::new();
+    let p: getmasters_proto::PortfolioDto = client
+        .get(format!("{base}/projects/{pid}/portfolio"))
+        .bearer_auth(TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    assert_eq!(p.positions.len(), 2);
+    assert_eq!(p.total_value, Some(170_000.0));
+    assert_eq!(p.unvalued_count, 1, "no quantity → honestly unvalued");
+    assert_eq!(p.hhi, Some(1.0));
+    let maotai = p.positions.iter().find(|x| x.symbol == "sh600519").unwrap();
+    assert_eq!(maotai.weight, Some(1.0));
+    assert_eq!(maotai.source.as_deref(), Some("fixture"));
+    assert_eq!(maotai.cost, Some(1500.0));
+
+    // The recorded holding is now lifecycle-guarded against untrack (409), like slice 1.
+    let res = client
+        .delete(format!("{base}/projects/{pid}/assets/sh600519"))
+        .bearer_auth(TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 409);
 }

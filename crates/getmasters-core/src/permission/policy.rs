@@ -24,9 +24,8 @@ pub fn classify(tool: &str) -> SideEffect {
         // answer. Narrow ruling; revisit if a general-purpose web tool ever reuses the pattern.
         "read" | "list" | "search" | "recall" | "recall_skill" | "status" | "answer"
         | "list_skills" | "list_masters" | "route_brief" | "start_review" | "list_decks"
-        | "review_stats" | "get_quote" | "search_symbol" | "list_assets" | "list_announcements" => {
-            SideEffect::Read
-        }
+        | "review_stats" | "get_quote" | "search_symbol" | "list_assets" | "list_announcements"
+        | "portfolio_overview" => SideEffect::Read,
         // `forget` is a curation edit of a memory file (revert-eligible), not a destructive
         // delete of user data (docs/04 §2.4); only `files.delete` is destructive.
         "delete" => SideEffect::Destructive,
@@ -140,6 +139,9 @@ mod tests {
         assert_eq!(classify("market.get_quote"), SideEffect::Read);
         assert_eq!(classify("market.search_symbol"), SideEffect::Read);
         assert_eq!(classify("market.list_announcements"), SideEffect::Read);
+        assert_eq!(classify("assets.record_position"), SideEffect::Write);
+        assert_eq!(classify("assets.record_txn"), SideEffect::Write);
+        assert_eq!(classify("fincalc.portfolio_overview"), SideEffect::Read);
     }
 
     #[test]

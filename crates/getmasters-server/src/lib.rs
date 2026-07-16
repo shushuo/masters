@@ -82,6 +82,10 @@ pub fn build_app(state: AppState) -> Router {
             get(routes::investing::list_briefings),
         )
         .route(
+            "/projects/{id}/portfolio",
+            get(routes::investing::get_portfolio),
+        )
+        .route(
             "/projects/{id}/study-plan",
             get(routes::projects::study_plan),
         )

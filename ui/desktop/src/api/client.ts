@@ -51,6 +51,7 @@ export type ProjectDto = components["schemas"]["ProjectDto"];
 export type ExtensionDto = components["schemas"]["ExtensionDto"];
 export type KnowledgeStatusDto = components["schemas"]["KnowledgeStatusDto"];
 export type AssetDto = components["schemas"]["AssetDto"];
+export type PortfolioDto = components["schemas"]["PortfolioDto"];
 export type QuoteDto = components["schemas"]["QuoteDto"];
 export type InvestingWorkspaceDto = components["schemas"]["InvestingWorkspaceDto"];
 export type BriefingDto = components["schemas"]["BriefingDto"];
@@ -298,6 +299,15 @@ export class MastersClient {
       { method: "DELETE", headers: this.headers() },
     );
     if (!res.ok) throw new Error(`untrackAsset failed: ${res.status}`);
+  }
+
+  /** Deterministic portfolio overview over recorded holdings (FinCalc; unvalued reported). */
+  async getPortfolio(projectId: string): Promise<PortfolioDto> {
+    const res = await fetch(`${this.base()}/projects/${projectId}/portfolio`, {
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`getPortfolio failed: ${res.status}`);
+    return res.json();
   }
 
   /** Delivered proactive-touch briefings, newest first (silent runs hidden). */

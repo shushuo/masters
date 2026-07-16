@@ -452,6 +452,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{id}/portfolio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_project_portfolio"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{id}/quotes": {
         parameters: {
             query?: never;
@@ -1469,6 +1485,51 @@ export interface components {
              * @description Provider-reported token usage for this turn (input + output), when available.
              */
             token_usage?: number | null;
+        };
+        /** @description The deterministic portfolio overview (FinCalc — docs/11 M2). */
+        PortfolioDto: {
+            /**
+             * Format: double
+             * @description Herfindahl–Hirschman concentration over valued weights.
+             */
+            hhi?: number | null;
+            positions: components["schemas"]["PortfolioPositionDto"][];
+            /** Format: double */
+            top3_share?: number | null;
+            /** Format: double */
+            total_value?: number | null;
+            /**
+             * Format: int64
+             * @description Holdings that could not be valued (missing quantity or quote).
+             */
+            unvalued_count: number;
+        };
+        /**
+         * @description One valued holding in the portfolio overview (nullable everywhere — an unvalued position is
+         *     reported honestly, never estimated).
+         */
+        PortfolioPositionDto: {
+            /** Format: double */
+            close?: number | null;
+            /** Format: double */
+            cost?: number | null;
+            name: string;
+            /** Format: double */
+            quantity?: number | null;
+            source?: string | null;
+            stale: boolean;
+            symbol: string;
+            trade_date?: string | null;
+            /**
+             * Format: double
+             * @description `quantity × close` when both known.
+             */
+            value?: number | null;
+            /**
+             * Format: double
+             * @description Share of the valued total (0..1).
+             */
+            weight?: number | null;
         };
         /** @description A project (context container, ADR-0011). */
         ProjectDto: {
@@ -2736,6 +2797,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MemoryDto"][];
+                };
+            };
+        };
+    };
+    get_project_portfolio: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deterministic portfolio overview over recorded holdings (unvalued positions reported, never estimated) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioDto"];
                 };
             };
         };

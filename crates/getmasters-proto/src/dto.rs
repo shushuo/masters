@@ -857,6 +857,46 @@ pub struct BriefingDto {
     pub body: String,
 }
 
+/// One valued holding in the portfolio overview (nullable everywhere — an unvalued position is
+/// reported honestly, never estimated).
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct PortfolioPositionDto {
+    pub symbol: String,
+    pub name: String,
+    #[serde(default)]
+    pub quantity: Option<f64>,
+    #[serde(default)]
+    pub cost: Option<f64>,
+    #[serde(default)]
+    pub close: Option<f64>,
+    /// `quantity × close` when both known.
+    #[serde(default)]
+    pub value: Option<f64>,
+    /// Share of the valued total (0..1).
+    #[serde(default)]
+    pub weight: Option<f64>,
+    #[serde(default)]
+    pub trade_date: Option<String>,
+    #[serde(default)]
+    pub source: Option<String>,
+    pub stale: bool,
+}
+
+/// The deterministic portfolio overview (FinCalc — docs/11 M2).
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct PortfolioDto {
+    #[serde(default)]
+    pub total_value: Option<f64>,
+    /// Herfindahl–Hirschman concentration over valued weights.
+    #[serde(default)]
+    pub hhi: Option<f64>,
+    #[serde(default)]
+    pub top3_share: Option<f64>,
+    pub positions: Vec<PortfolioPositionDto>,
+    /// Holdings that could not be valued (missing quantity or quote).
+    pub unvalued_count: i64,
+}
+
 /// The seeded investing workspace (docs/11): the default project + the standing expert team.
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 pub struct InvestingWorkspaceDto {

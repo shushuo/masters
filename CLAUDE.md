@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Current state: Phase 0 + Phase 1 + Phase 2 (2a/2b/2c) + Phase 3a/3b (Study) + 3c (Recipes) + 3d (Scheduler) + 3e (Delivery) + 4a (Masters) + 4b (Teams + router) + 4c (Group chat) + 4d (External MCP) + 4e (Group streaming) + 4f (Multi-round) + 4g (Group tool visibility) + 4h (Portable bundles) + 4i (External ACP master agents) + Desktop UI (design system, full management UI, ACP selector, chat history, audit viewer, theme toggle, group max-rounds) + Masters sidebar (standalone/global masters + system templates + quick chat) + Hardening pass (loop robustness, i18n, event log, ACP gate) + Investing vertical slice 1 (assets+market servers, expert-team pack, ask→track loop, Watch UI) + slice 2 (proactive touch: weekly digest + mover sentinel recipes w/ silent-pass, briefings feed) implemented
+## Current state: Phase 0 + Phase 1 + Phase 2 (2a/2b/2c) + Phase 3a/3b (Study) + 3c (Recipes) + 3d (Scheduler) + 3e (Delivery) + 4a (Masters) + 4b (Teams + router) + 4c (Group chat) + 4d (External MCP) + 4e (Group streaming) + 4f (Multi-round) + 4g (Group tool visibility) + 4h (Portable bundles) + 4i (External ACP master agents) + Desktop UI (design system, full management UI, ACP selector, chat history, audit viewer, theme toggle, group max-rounds) + Masters sidebar (standalone/global masters + system templates + quick chat) + Hardening pass (loop robustness, i18n, event log, ACP gate) + Investing vertical slice 1 (assets+market servers, expert-team pack, ask→track loop, Watch UI) + slice 2 (proactive touch: weekly digest + mover sentinel recipes w/ silent-pass, briefings feed) + slice 3 (earnings sentinel on cninfo disclosures) + slice 4 (progressive ledger + FinCalc portfolio unlock) implemented
 
 **Phase 0 (Foundations)** and **Phase 1a** are in place (see `docs/08-roadmap.md` and
 `DEVELOPMENT.md`): a Rust Cargo workspace under `crates/` (`getmasters-proto`, `getmasters-core`,
@@ -437,11 +437,27 @@ never overwritten, unlike system masters) with `deliver_notify` on; the **silent
 and hidden from the feed: 超阈值才说话); `Store::list_project_runs` (runs⋈schedules) + `GET
 /projects/{id}/briefings` (`BriefingDto`, full body = the run session's final assistant message;
 ok + non-silent only) + a desktop `Briefings.tsx` feed (📰 nav, markdown cards, 就此提问 →
-embedded expert GroupChat). **Deferred within the vertical:** the earnings sentinel (needs a
-cninfo disclosure data face: adapter + filings/calendar cache), the cloud cross-section snapshot
+embedded expert GroupChat). **Slice 3 (earnings sentinel)** completed the
+touch trio on the statutory channel (D11): migration **0023** `announcements` cache (global, provenance
+via `UNIQUE(source, ann_id)`), `MarketFetcher::recent_announcements` (default-Err so quote-only sources
+degrade) + `MarketData::announcements` (fetch-fresh daily, cache-window fallback, empty = honest), Read
+tool `market.list_announcements`, the cninfo adapter (`market_fetch.rs` — hand-rolled urlencoded POST,
+pure `parse_cninfo_announcements` on canned JSON) and the seeded `earnings-sentinel` recipe (定期报告
+title filter, silent-pass, weekdays 13:30 UTC = 21:30 Beijing post-disclosure-wave).
+**Slice 4 (progressive ledger + portfolio, B4+B5)** opened ADR-0016's holding state: gated Write tools
+`assets.record_position`/`record_txn` (conversation-confirmed, partial fields normal — COALESCE upsert
+on one `positions` row per asset; a buy transitions watching→holding), `Store::{set_asset_state,
+upsert_position,insert_txn,holdings}`; **`getmasters-core::fincalc`** (NFR-INV-1: the LLM never
+mental-maths money) — pure `hhi`/`top_n_share` + `overview` (value = quantity×close only when both
+known, else honestly unvalued; provenance carried), hosted as the **FinCalcServer** built-in
+(`portfolio_overview` Read; hosted with `market` behind the injected fetcher), `GET
+/projects/{id}/portfolio` (`PortfolioDto`), the Watch-page portfolio strip (unlocks once a holding
+exists), and the 配置规划师 `allocation` master joining the standing team (roster now
+chief/analyst/risk/allocation/coach; coach carries the record-after-confirm 轻提议 mandate).
+**Deferred within the vertical:** the cloud cross-section snapshot
 + weekly bulletin + daily master-quote pack, unread state on briefings, JournalServer,
-FinCalcServer + portfolio unlock, redaction mode, dual-source validation, screenshot ingestion
-(ADR-0018).
+sell/close flows + coached quarterly reviews (hypothetical returns live only there, D10), redaction
+mode, dual-source validation, screenshot ingestion (ADR-0018).
 
 **Deferred to Phase 3 (later slices) and Phase 4:** the per-session **audit-log viewer** (`GET
 /sessions/{id}/audit`) and **group `max_rounds` over the WS stream** have since landed in the Desktop

@@ -139,6 +139,16 @@ pub struct AssetRow {
     pub snapshot_date: Option<String>,
 }
 
+/// One position row (progressive ledger, ADR-0016): all value fields nullable — holdings
+/// accumulate from conversation, partial data is normal.
+#[derive(Clone, Debug)]
+pub struct PositionRow {
+    pub asset_id: String,
+    pub quantity: Option<f64>,
+    pub cost: Option<f64>,
+    pub account: Option<String>,
+}
+
 /// Outcome of an asset untrack attempt — deletion is a lifecycle-guarded operation
 /// (ADR-0016: only a `watching` row may be removed; holdings are a ledger, not a list entry).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1584,6 +1594,108 @@ impl Store {
         } else {
             DeleteAssetOutcome::NotFound
         })
+    }
+
+    /// Move an asset to a lifecycle state (e.g. `watching → holding`). Returns false when the
+    /// asset doesn't exist.
+    pub fn set_asset_state(&self, project_id: &str, symbol: &str, state: &str) -> Result<bool> {
+        let n = self.lock().execute(
+            "UPDATE assets SET state = ?3, updated_at = ?4
+             WHERE project_id = ?1 AND symbol = ?2",
+            rusqlite::params![project_id, symbol, state, now_ms()],
+        )?;
+        Ok(n > 0)
+    }
+
+    /// Upsert an asset's (single) position row — progressive accumulation: only supplied
+    /// fields overwrite, absent fields keep their prior value.
+    pub fn upsert_position(
+        &self,
+        asset_id: &str,
+        quantity: Option<f64>,
+        cost: Option<f64>,
+        account: Option<&str>,
+    ) -> Result<()> {
+        let conn = self.lock();
+        let ts = now_ms();
+        let existing: Option<String> = conn
+            .query_row(
+                "SELECT id FROM positions WHERE asset_id = ?1",
+                [asset_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        match existing {
+            Some(id) => {
+                conn.execute(
+                    "UPDATE positions SET
+                        quantity = COALESCE(?2, quantity),
+                        cost = COALESCE(?3, cost),
+                        account = COALESCE(?4, account),
+                        updated_at = ?5
+                     WHERE id = ?1",
+                    rusqlite::params![id, quantity, cost, account, ts],
+                )?;
+            }
+            None => {
+                conn.execute(
+                    "INSERT INTO positions (id, asset_id, quantity, cost, account,
+                                            created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+                    rusqlite::params![new_id(), asset_id, quantity, cost, account, ts],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Record a transaction against an asset (buy | sell | dividend).
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_txn(
+        &self,
+        asset_id: &str,
+        kind: &str,
+        quantity: Option<f64>,
+        price: Option<f64>,
+        fee: Option<f64>,
+        note: Option<&str>,
+    ) -> Result<()> {
+        self.lock().execute(
+            "INSERT INTO txns (id, asset_id, kind, quantity, price, fee, traded_at, note, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?7)",
+            rusqlite::params![new_id(), asset_id, kind, quantity, price, fee, now_ms(), note],
+        )?;
+        Ok(())
+    }
+
+    /// The project's `holding` assets joined with their position rows (the portfolio input).
+    pub fn holdings(&self, project_id: &str) -> Result<Vec<(AssetRow, Option<PositionRow>)>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {}, p.asset_id, p.quantity, p.cost, p.account
+             FROM assets a LEFT JOIN positions p ON p.asset_id = a.id
+             WHERE a.project_id = ?1 AND a.state = 'holding'
+             ORDER BY a.watched_at DESC",
+            Self::ASSET_COLS
+                .split(", ")
+                .map(|c| format!("a.{c}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))?;
+        let rows = stmt
+            .query_map([project_id], |r| {
+                let asset = Self::map_asset(r)?;
+                let pos: Option<String> = r.get(11)?;
+                let position = pos.map(|asset_id| PositionRow {
+                    asset_id,
+                    quantity: r.get(12).ok().flatten(),
+                    cost: r.get(13).ok().flatten(),
+                    account: r.get(14).ok().flatten(),
+                });
+                Ok((asset, position))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
     }
 
     // --- Market price cache (with provenance, ADR-0017) ---------------------

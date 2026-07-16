@@ -26,6 +26,7 @@ pub const ALL_BUILTIN_SERVERS: &[&str] = &[
     "study",
     "assets",
     "market",
+    "fincalc",
     "masters",
     "web",
 ];
@@ -40,6 +41,7 @@ pub const IMPLEMENTED_SERVERS: &[&str] = &[
     "study",
     "assets",
     "market",
+    "fincalc",
 ];
 
 /// `settings` key holding the system default project id (backs quick chat; see

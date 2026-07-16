@@ -74,4 +74,72 @@ impl AssetsStore {
     pub fn list(&self, state: Option<&str>) -> Result<Vec<AssetRow>> {
         self.store.list_assets(&self.project_id, state)
     }
+
+    /// Record (progressively) that the user holds an instrument: ensure the asset exists
+    /// (tracking it first if needed), transition it to `holding`, and upsert its position —
+    /// only supplied fields overwrite (partial data is the normal case, ADR-0016).
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_position(
+        &self,
+        symbol: &str,
+        name: &str,
+        market: &str,
+        kind: &str,
+        quantity: Option<f64>,
+        cost: Option<f64>,
+        account: Option<&str>,
+    ) -> Result<AssetRow> {
+        let (row, _) = self.store.upsert_asset_watch(
+            &self.project_id,
+            symbol,
+            name,
+            market,
+            kind,
+            None,
+            None,
+            None,
+            now_ms(),
+        )?;
+        // `sold` stays sold — recording a position on a sold asset re-opens it as holding
+        // (the user bought back); watching → holding is the normal progressive step.
+        self.store
+            .set_asset_state(&self.project_id, symbol, "holding")?;
+        self.store
+            .upsert_position(&row.id, quantity, cost, account)?;
+        self.store
+            .get_asset(&self.project_id, symbol)
+            .map(|o| o.expect("asset just upserted"))
+    }
+
+    /// Record a transaction (buy | sell | dividend) against an instrument; a buy on an
+    /// untracked/watching asset also moves it to `holding`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_txn(
+        &self,
+        symbol: &str,
+        name: &str,
+        kind: &str,
+        quantity: Option<f64>,
+        price: Option<f64>,
+        fee: Option<f64>,
+        note: Option<&str>,
+    ) -> Result<()> {
+        let (row, _) = self.store.upsert_asset_watch(
+            &self.project_id,
+            symbol,
+            name,
+            "cn-a",
+            "stock",
+            None,
+            None,
+            None,
+            now_ms(),
+        )?;
+        if kind == "buy" && row.state == "watching" {
+            self.store
+                .set_asset_state(&self.project_id, symbol, "holding")?;
+        }
+        self.store
+            .insert_txn(&row.id, kind, quantity, price, fee, note)
+    }
 }

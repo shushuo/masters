@@ -13,7 +13,9 @@ use axum::Json;
 
 use getmasters_core::market::MarketData;
 use getmasters_core::store::DeleteAssetOutcome;
-use getmasters_proto::{AssetDto, BriefingDto, InvestingWorkspaceDto, QuoteDto};
+use getmasters_proto::{
+    AssetDto, BriefingDto, InvestingWorkspaceDto, PortfolioDto, PortfolioPositionDto, QuoteDto,
+};
 
 use crate::state::{AppError, AppState};
 
@@ -163,6 +165,50 @@ pub async fn list_briefings(
         });
     }
     Ok(Json(out))
+}
+
+#[utoipa::path(
+    get,
+    path = "/projects/{id}/portfolio",
+    operation_id = "get_project_portfolio",
+    params(("id" = String, Path, description = "Project id")),
+    responses((status = 200, description = "Deterministic portfolio overview over recorded holdings (unvalued positions reported, never estimated)", body = PortfolioDto)),
+    tag = "investing"
+)]
+pub async fn get_portfolio(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<PortfolioDto>, AppError> {
+    let store = state.agent.store();
+    store.get_project(&id)?; // 404 if unknown
+    let market = MarketData::new(store.clone(), state.market.clone());
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    let o = getmasters_core::fincalc::overview(store, &market, &id, now).await?;
+    Ok(Json(PortfolioDto {
+        total_value: o.total_value,
+        hhi: o.hhi,
+        top3_share: o.top3_share,
+        unvalued_count: o.unvalued_count as i64,
+        positions: o
+            .positions
+            .into_iter()
+            .map(|p| PortfolioPositionDto {
+                symbol: p.symbol,
+                name: p.name,
+                quantity: p.quantity,
+                cost: p.cost,
+                close: p.close,
+                value: p.value,
+                weight: p.weight,
+                trade_date: p.trade_date,
+                source: p.source,
+                stale: p.stale,
+            })
+            .collect(),
+    }))
 }
 
 #[derive(serde::Deserialize, utoipa::IntoParams)]

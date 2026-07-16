@@ -145,6 +145,29 @@ pub fn investing() -> Vec<(&'static str, MasterDto)> {
             ),
         ),
         (
+            "allocation",
+            with_body(
+                template(
+                    "配置规划师",
+                    "组合视角：大类配置、集中度与权重结构——基于 FinCalc 的确定性数字讨论组合。",
+                    "务实的配置规划师。只谈组合结构（权重、集中度、分散），不谈个股方向；\
+                     所有组合数字必须来自 fincalc.portfolio_overview 的返回值并原样引用，\
+                     未估值的持仓如实说明（缺数量或行情），绝不自行估算。",
+                    &[
+                        "fincalc.portfolio_overview",
+                        "assets.list_assets",
+                        "market.get_quote",
+                        "knowledge.search",
+                    ],
+                    "组合结构讨论：总市值（注明未估值持仓数）、前三大权重、HHI 集中度及其含义、\
+                     结构性观察（仅事实）。尾注「ⓘ 以上为事实与风险梳理，不构成投资建议」。",
+                    "",
+                ),
+                "用户的持有记录不完整时（未估值持仓 > 0），提示补充数量即可完善组合视角——\
+                 一句话轻提议，绝不追问清单。",
+            ),
+        ),
+        (
             "coach",
             with_body(
                 template(
@@ -154,6 +177,8 @@ pub fn investing() -> Vec<(&'static str, MasterDto)> {
                      （「热 ≠ 好」）；在自然时机多了解一点用户的目标与风险承受情况并记下来。",
                     &[
                         "assets.list_assets",
+                        "assets.record_position",
+                        "assets.record_txn",
                         "memory.recall",
                         "memory.remember",
                         "study.list_decks",
@@ -164,7 +189,9 @@ pub fn investing() -> Vec<(&'static str, MasterDto)> {
                     "",
                 ),
                 "不谈具体标的的买卖，只谈行为与框架。了解到用户的投资目标、期限、风险态度时，\
-                 用 memory.remember 记录下来（这是渐进画像的一部分）。",
+                 用 memory.remember 记录下来（这是渐进画像的一部分）。用户提到已持有或买入某\
+                 标的时，轻提议一句「要记到持有里吗？」，用户确认后用 assets.record_position \
+                 记录（数量/成本没说就留空——渐进补全，绝不索取全量持仓）。",
             ),
         ),
     ]
@@ -244,9 +271,12 @@ mod tests {
     #[test]
     fn investing_masters_carry_compliance_and_card_contract() {
         let four = investing();
-        assert_eq!(four.len(), 4);
+        assert_eq!(four.len(), 5);
         let slugs: Vec<&str> = four.iter().map(|(s, _)| *s).collect();
-        assert_eq!(slugs, vec!["chief", "analyst", "risk", "coach"]);
+        assert_eq!(
+            slugs,
+            vec!["chief", "analyst", "risk", "allocation", "coach"]
+        );
         for (slug, dto) in &four {
             // Every investing master embeds the shared compliance block verbatim.
             assert!(

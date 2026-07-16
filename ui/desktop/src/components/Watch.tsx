@@ -4,7 +4,13 @@
 // D10: no "since watching ±%" here — hypothetical returns belong to coached reviews only.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MessageCircleQuestion, Star, Trash2 } from "lucide-react";
-import type { AssetDto, InvestingWorkspaceDto, MastersClient, QuoteDto } from "../api/client";
+import type {
+  AssetDto,
+  InvestingWorkspaceDto,
+  MastersClient,
+  PortfolioDto,
+  QuoteDto,
+} from "../api/client";
 import { GroupChat } from "./GroupChat";
 import { Badge, Button, Card, IconButton } from "./ui";
 import { t } from "../lib/i18n";
@@ -93,10 +99,40 @@ function AssetCard({
   );
 }
 
+/** B5 portfolio unlock: a summary strip that appears once any holding is recorded.
+ * All numbers come from FinCalc verbatim; unvalued positions are counted, never estimated. */
+function PortfolioStrip({ portfolio }: { portfolio: PortfolioDto }) {
+  const stat = (label: string, value: string) => (
+    <div className="flex flex-col">
+      <span className="text-xs text-muted">{label}</span>
+      <span className="font-medium tabular-nums">{value}</span>
+    </div>
+  );
+  return (
+    <Card className="flex flex-wrap items-center gap-6 p-4">
+      <span className="text-sm font-medium">{t("watch.portfolio.title")}</span>
+      {portfolio.total_value != null &&
+        stat(
+          t("watch.portfolio.total"),
+          portfolio.total_value.toLocaleString(undefined, { maximumFractionDigits: 0 }),
+        )}
+      {portfolio.hhi != null && stat(t("watch.portfolio.hhi"), portfolio.hhi.toFixed(2))}
+      {portfolio.top3_share != null &&
+        stat(t("watch.portfolio.top3"), `${(portfolio.top3_share * 100).toFixed(0)}%`)}
+      {portfolio.unvalued_count > 0 && (
+        <span className="text-xs text-muted">
+          ⚠ {portfolio.unvalued_count} {t("watch.portfolio.unvalued")}
+        </span>
+      )}
+    </Card>
+  );
+}
+
 export function Watch({ client }: { client: MastersClient }) {
   const [workspace, setWorkspace] = useState<InvestingWorkspaceDto | null>(null);
   const [assets, setAssets] = useState<AssetDto[] | null>(null);
   const [quotes, setQuotes] = useState<Map<string, QuoteDto>>(new Map());
+  const [portfolio, setPortfolio] = useState<PortfolioDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [chatting, setChatting] = useState(false);
 
@@ -104,6 +140,16 @@ export function Watch({ client }: { client: MastersClient }) {
     async (ws: InvestingWorkspaceDto) => {
       const list = await client.listAssets(ws.project_id);
       setAssets(list);
+      // The portfolio strip unlocks progressively — only once a holding is recorded.
+      if (list.some((a) => a.state === "holding")) {
+        try {
+          setPortfolio(await client.getPortfolio(ws.project_id));
+        } catch {
+          setPortfolio(null);
+        }
+      } else {
+        setPortfolio(null);
+      }
       const watching = list.map((a) => a.symbol);
       if (watching.length > 0) {
         // Quotes degrade independently: a failure leaves cards in the explicit no-data state.
@@ -221,6 +267,7 @@ export function Watch({ client }: { client: MastersClient }) {
           </div>
         ) : (
           <div className="mx-auto flex max-w-3xl flex-col gap-3">
+            {portfolio && <PortfolioStrip portfolio={portfolio} />}
             {assets.map((a) => (
               <AssetCard
                 key={a.symbol}

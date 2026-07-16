@@ -19,6 +19,7 @@ use getmasters_mcp::FilesServer;
 use getmasters_proto::FolderGrant;
 
 use crate::assets::AssetsServer;
+use crate::fincalc::FinCalcServer;
 use crate::knowledge::{Embedder, KnowledgeServer, VectorIndex};
 use crate::market::{MarketDataServer, MarketFetcher};
 use crate::memory::MemoryServer;
@@ -201,15 +202,24 @@ impl ExtensionManager {
             mgr.host("study", StudyServer::new(project_id.clone(), store.clone()))
                 .await?;
         }
+        let project_id2 = project_id.clone();
         if enabled.contains("assets") {
             mgr.host("assets", AssetsServer::new(project_id, store.clone()))
                 .await?;
         }
-        // Market data needs the injected upstream fetcher (ADR-0015/0017: core is HTTP-free —
-        // the adapter lives in the server crate). `None` → not hosted, graceful absence.
-        if enabled.contains("market") {
-            if let Some(fetcher) = market_fetcher {
-                mgr.host("market", MarketDataServer::new(store, fetcher))
+        // Market data + FinCalc need the injected upstream fetcher (ADR-0015/0017: core is
+        // HTTP-free — the adapter lives in the server crate). `None` → not hosted (graceful
+        // absence).
+        if let Some(fetcher) = market_fetcher {
+            if enabled.contains("market") {
+                mgr.host(
+                    "market",
+                    MarketDataServer::new(store.clone(), fetcher.clone()),
+                )
+                .await?;
+            }
+            if enabled.contains("fincalc") {
+                mgr.host("fincalc", FinCalcServer::new(project_id2, store, fetcher))
                     .await?;
             }
         }

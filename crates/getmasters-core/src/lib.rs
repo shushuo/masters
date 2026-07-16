@@ -12,6 +12,7 @@ pub mod assets;
 pub mod config;
 pub mod error;
 pub mod extensions;
+pub mod fincalc;
 pub mod knowledge;
 pub mod market;
 pub mod masters;

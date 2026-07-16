@@ -50,6 +50,44 @@ pub struct UntrackAssetParams {
 }
 
 #[derive(serde::Deserialize, schemars::JsonSchema)]
+pub struct RecordPositionParams {
+    /// The instrument symbol (`sh600519`, `600519.SH`, or bare `600519`).
+    pub symbol: String,
+    /// Display name (e.g. `贵州茅台`).
+    pub name: String,
+    /// Number of shares/units held, if the user said (partial data is fine).
+    #[serde(default)]
+    pub quantity: Option<f64>,
+    /// Average cost per share/unit, if the user said.
+    #[serde(default)]
+    pub cost: Option<f64>,
+    /// Which account it sits in (e.g. `券商A`), if the user said.
+    #[serde(default)]
+    pub account: Option<String>,
+    /// `"stock"` (default) or `"fund"`.
+    #[serde(default)]
+    pub kind: Option<String>,
+}
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+pub struct RecordTxnParams {
+    /// The instrument symbol.
+    pub symbol: String,
+    /// Display name.
+    pub name: String,
+    /// `"buy"` | `"sell"` | `"dividend"`.
+    pub kind: String,
+    #[serde(default)]
+    pub quantity: Option<f64>,
+    #[serde(default)]
+    pub price: Option<f64>,
+    #[serde(default)]
+    pub fee: Option<f64>,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
 pub struct ListAssetsParams {
     /// Filter by lifecycle state (`watching` | `holding` | `sold`). Omit for all.
     #[serde(default)]
@@ -92,6 +130,8 @@ impl AssetsServer {
         &[
             ("track_asset", Write),
             ("untrack_asset", Write),
+            ("record_position", Write),
+            ("record_txn", Write),
             ("list_assets", Read),
         ]
     }
@@ -181,6 +221,80 @@ impl AssetsServer {
             )),
             Err(e) => err(format!("untrack_asset failed: {e}")),
         })
+    }
+
+    #[tool(
+        description = "Record that the user HOLDS an instrument (progressive ledger). Only call \
+                       after the user confirmed in conversation ('要记下来吗？'); partial data \
+                       (no quantity/cost) is fine — fields fill in over time, never demanded."
+    )]
+    async fn record_position(
+        &self,
+        Parameters(p): Parameters<RecordPositionParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let Some(symbol) = normalize_symbol(&p.symbol) else {
+            return Ok(err(format!(
+                "record_position: unknown symbol '{}'",
+                p.symbol
+            )));
+        };
+        let kind = match p.kind.as_deref() {
+            Some("fund") => "fund",
+            _ => "stock",
+        };
+        Ok(
+            match self.assets.record_position(
+                &symbol,
+                &p.name,
+                "cn-a",
+                kind,
+                p.quantity,
+                p.cost,
+                p.account.as_deref(),
+            ) {
+                Ok(row) => ok(format!(
+                    "recorded holding {} ({}) — quantity {}, cost {}",
+                    row.name,
+                    row.symbol,
+                    p.quantity
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "-".into()),
+                    p.cost.map(|v| v.to_string()).unwrap_or_else(|| "-".into())
+                )),
+                Err(e) => err(format!("record_position failed: {e}")),
+            },
+        )
+    }
+
+    #[tool(
+        description = "Record a transaction (buy/sell/dividend) the user described. Only call \
+                       after the user confirmed; a buy moves a watched instrument to holding."
+    )]
+    async fn record_txn(
+        &self,
+        Parameters(p): Parameters<RecordTxnParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let Some(symbol) = normalize_symbol(&p.symbol) else {
+            return Ok(err(format!("record_txn: unknown symbol '{}'", p.symbol)));
+        };
+        let kind = match p.kind.as_str() {
+            "buy" | "sell" | "dividend" => p.kind.as_str(),
+            other => return Ok(err(format!("record_txn: unknown kind '{other}'"))),
+        };
+        Ok(
+            match self.assets.record_txn(
+                &symbol,
+                &p.name,
+                kind,
+                p.quantity,
+                p.price,
+                p.fee,
+                p.note.as_deref(),
+            ) {
+                Ok(()) => ok(format!("recorded {kind} on {symbol}")),
+                Err(e) => err(format!("record_txn failed: {e}")),
+            },
+        )
     }
 
     #[tool(description = "List the user's tracked assets (watch list and, later, holdings)")]
