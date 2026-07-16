@@ -388,6 +388,73 @@ pub const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX idx_events_session ON events(session_id, created_at);
     "#,
+    // 0021 — investing vertical: the asset lifecycle spine (ADR-0016). One `assets` table carries
+    // an instrument through `watching → holding → sold` — the watchlist and the ledger are states
+    // of the same row, not separate features. Slice 1 writes only `watching` plus the
+    // point-in-time snapshot (price/date/reason at first interest, docs/11 D10); `positions` and
+    // `txns` are schema'd now so the progressive-accumulation upgrade (V1) is a state transition,
+    // not a migration. Ints/strings/reals only (lean core).
+    r#"
+    CREATE TABLE assets (
+        id             TEXT PRIMARY KEY,
+        project_id     TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        symbol         TEXT NOT NULL,              -- canonical, e.g. 'sh600519'
+        name           TEXT NOT NULL,
+        market         TEXT NOT NULL DEFAULT 'cn-a',
+        kind           TEXT NOT NULL DEFAULT 'stock',    -- stock | fund
+        state          TEXT NOT NULL DEFAULT 'watching', -- watching | holding | sold
+        watch_reason   TEXT,                       -- why the user cared, extracted from conversation
+        watched_at     INTEGER NOT NULL,           -- epoch ms of first interest
+        snapshot_price REAL,                       -- close at watch time (nullable: partial data OK)
+        snapshot_date  TEXT,                       -- 'YYYY-MM-DD' the snapshot price is for
+        created_at     INTEGER NOT NULL,
+        updated_at     INTEGER NOT NULL,
+        UNIQUE(project_id, symbol)
+    );
+    CREATE INDEX idx_assets_project ON assets(project_id, state);
+    CREATE TABLE positions (
+        id         TEXT PRIMARY KEY,
+        asset_id   TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+        quantity   REAL,                           -- all nullable: progressive accumulation
+        cost       REAL,
+        account    TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE txns (
+        id         TEXT PRIMARY KEY,
+        asset_id   TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+        kind       TEXT NOT NULL,                  -- buy | sell | dividend
+        quantity   REAL,
+        price      REAL,
+        fee        REAL,
+        traded_at  INTEGER,
+        note       TEXT,
+        created_at INTEGER NOT NULL
+    );
+    "#,
+    // 0022 — market data cache with provenance (ADR-0017). Global, not project-scoped: a quote is
+    // a fact about the market, shared by every project. Every row carries its source and fetch
+    // time; `validation` starts life 'unverified' (single source) — dual-source cross-validation
+    // ('verified'/'disputed') is the deferred upgrade. Never a fabricated number: the cache only
+    // holds what an adapter actually returned.
+    r#"
+    CREATE TABLE price_cache (
+        id         TEXT PRIMARY KEY,
+        symbol     TEXT NOT NULL,
+        market     TEXT NOT NULL,
+        name       TEXT,
+        trade_date TEXT NOT NULL,                  -- 'YYYY-MM-DD' the quote is for
+        close      REAL,
+        prev_close REAL,
+        change_pct REAL,
+        source     TEXT NOT NULL,                  -- adapter id, e.g. 'eastmoney'
+        fetched_at INTEGER NOT NULL,               -- epoch ms
+        validation TEXT NOT NULL DEFAULT 'unverified', -- unverified | verified | disputed
+        UNIQUE(symbol, trade_date, source)
+    );
+    CREATE INDEX idx_price_cache_symbol ON price_cache(symbol, trade_date);
+    "#,
 ];
 
 /// Apply any pending migrations. Safe to call on every startup.
