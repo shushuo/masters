@@ -235,6 +235,18 @@ pub struct ScheduledRunRow {
     pub summary: Option<String>,
 }
 
+/// A scheduled run joined with its schedule's recipe name — the project-wide briefings feed
+/// (investing vertical M8; the full output lives in the run session's transcript).
+#[derive(Clone, Debug)]
+pub struct ProjectRunRow {
+    pub started_at: i64,
+    /// `"ok"` | `"error"`.
+    pub status: String,
+    pub recipe_name: String,
+    pub session_id: Option<String>,
+    pub summary: Option<String>,
+}
+
 /// A captured file revision (for revert/undo).
 #[derive(Clone, Debug)]
 pub struct RevisionRow {
@@ -2209,6 +2221,31 @@ impl Store {
             rusqlite::params![new_id(), schedule_id, project_id, now_ms(), status, session_id, summary],
         )?;
         Ok(())
+    }
+
+    /// All of a project's scheduled runs (newest first, capped) with their recipe names —
+    /// the briefings feed.
+    pub fn list_project_runs(&self, project_id: &str, limit: usize) -> Result<Vec<ProjectRunRow>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(
+            "SELECT r.started_at, r.status, s.recipe_name, r.session_id, r.summary
+             FROM scheduled_runs r
+             JOIN schedules s ON s.id = r.schedule_id
+             WHERE r.project_id = ?1
+             ORDER BY r.started_at DESC LIMIT ?2",
+        )?;
+        let rows = stmt
+            .query_map(rusqlite::params![project_id, limit as i64], |r| {
+                Ok(ProjectRunRow {
+                    started_at: r.get(0)?,
+                    status: r.get(1)?,
+                    recipe_name: r.get(2)?,
+                    session_id: r.get(3)?,
+                    summary: r.get(4)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
     }
 
     /// A schedule's run history (newest first).

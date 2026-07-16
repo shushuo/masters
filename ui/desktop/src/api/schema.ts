@@ -228,6 +228,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{id}/briefings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_project_briefings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{id}/bundles": {
         parameters: {
             query?: never;
@@ -1003,6 +1019,22 @@ export interface components {
             suggested_args: string[];
             /** @description The command to register (may differ from `command`, e.g. an `npx` invocation). */
             suggested_command: string;
+        };
+        /** @description One proactive-touch briefing (a delivered scheduled-run output — the 简报流 feed item). */
+        BriefingDto: {
+            /** @description The full briefing body (markdown — the run's final assistant message). */
+            body: string;
+            /** @description The producing recipe's slug (e.g. `weekly-watch-digest`). */
+            recipe_name: string;
+            /** @description The run session (for audit/trace). */
+            session_id?: string | null;
+            /**
+             * Format: int64
+             * @description Epoch ms when the run started.
+             */
+            started_at: number;
+            /** @description The recipe's display title (falls back to the slug when the recipe file is gone). */
+            title: string;
         };
         /** @description Result of importing a [`TeamBundle`] into a project: the recreated team slug + master slugs. */
         BundleImportResult: {
@@ -2251,6 +2283,29 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    list_project_briefings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Delivered proactive-touch briefings, newest first (silent NO_ALERT runs hidden) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingDto"][];
+                };
             };
         };
     };

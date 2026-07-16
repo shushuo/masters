@@ -78,6 +78,10 @@ pub fn build_app(state: AppState) -> Router {
         )
         .route("/projects/{id}/quotes", get(routes::investing::list_quotes))
         .route(
+            "/projects/{id}/briefings",
+            get(routes::investing::list_briefings),
+        )
+        .route(
             "/projects/{id}/study-plan",
             get(routes::projects::study_plan),
         )

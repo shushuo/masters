@@ -4,8 +4,8 @@
 use utoipa::OpenApi;
 
 use getmasters_proto::{
-    AddGrantRequest, AssetDto, AuditEntryDto, AvailableHarnessDto, BundleImportResult, CatalogDto,
-    CatalogStatusDto, ClientCommand, ConfigCheckDto, ConfigCheckItem, ConnectorDto,
+    AddGrantRequest, AssetDto, AuditEntryDto, AvailableHarnessDto, BriefingDto, BundleImportResult,
+    CatalogDto, CatalogStatusDto, ClientCommand, ConfigCheckDto, ConfigCheckItem, ConnectorDto,
     CreateConnectorRequest, CreateProjectRequest, CreateScheduleRequest, CreateSessionRequest,
     CreateTeamRequest, DeckDto, DefaultMasterDto, DocumentDto, EmailSettingsDto,
     EmailSettingsUpdate, EnvironmentDto, ErrorDto, EventDto, ExtensionDto, FilePreview,
@@ -55,6 +55,7 @@ use getmasters_proto::{
         crate::routes::investing::list_assets,
         crate::routes::investing::untrack_asset,
         crate::routes::investing::list_quotes,
+        crate::routes::investing::list_briefings,
         crate::routes::recipes::save,
         crate::routes::recipes::list,
         crate::routes::recipes::get,
@@ -134,6 +135,7 @@ use getmasters_proto::{
         AssetDto,
         QuoteDto,
         InvestingWorkspaceDto,
+        BriefingDto,
         RecipeDto,
         RecipeParamDto,
         RecipeSummaryDto,

@@ -18,6 +18,7 @@ fn openapi_serializes_and_covers_phase0_surface() {
         "/projects/{id}/assets",
         "/projects/{id}/assets/{symbol}",
         "/projects/{id}/quotes",
+        "/projects/{id}/briefings",
     ] {
         assert!(json.contains(path), "spec missing path {path}");
     }
@@ -30,6 +31,7 @@ fn openapi_serializes_and_covers_phase0_surface() {
         "AssetDto",
         "QuoteDto",
         "InvestingWorkspaceDto",
+        "BriefingDto",
     ] {
         assert!(json.contains(schema), "spec missing schema {schema}");
     }

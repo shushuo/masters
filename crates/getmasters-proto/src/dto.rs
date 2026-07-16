@@ -842,6 +842,21 @@ pub struct QuoteDto {
     pub stale: bool,
 }
 
+/// One proactive-touch briefing (a delivered scheduled-run output — the 简报流 feed item).
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct BriefingDto {
+    /// Epoch ms when the run started.
+    pub started_at: i64,
+    /// The producing recipe's slug (e.g. `weekly-watch-digest`).
+    pub recipe_name: String,
+    /// The recipe's display title (falls back to the slug when the recipe file is gone).
+    pub title: String,
+    /// The run session (for audit/trace).
+    pub session_id: Option<String>,
+    /// The full briefing body (markdown — the run's final assistant message).
+    pub body: String,
+}
+
 /// The seeded investing workspace (docs/11): the default project + the standing expert team.
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 pub struct InvestingWorkspaceDto {

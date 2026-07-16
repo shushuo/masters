@@ -53,6 +53,7 @@ export type KnowledgeStatusDto = components["schemas"]["KnowledgeStatusDto"];
 export type AssetDto = components["schemas"]["AssetDto"];
 export type QuoteDto = components["schemas"]["QuoteDto"];
 export type InvestingWorkspaceDto = components["schemas"]["InvestingWorkspaceDto"];
+export type BriefingDto = components["schemas"]["BriefingDto"];
 
 /** Connection details handed over by the daemon handshake (`GETMASTERSD_READY`). */
 export interface DaemonConn {
@@ -297,6 +298,15 @@ export class MastersClient {
       { method: "DELETE", headers: this.headers() },
     );
     if (!res.ok) throw new Error(`untrackAsset failed: ${res.status}`);
+  }
+
+  /** Delivered proactive-touch briefings, newest first (silent runs hidden). */
+  async listBriefings(projectId: string): Promise<BriefingDto[]> {
+    const res = await fetch(`${this.base()}/projects/${projectId}/briefings`, {
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`listBriefings failed: ${res.status}`);
+    return res.json();
   }
 
   /** Latest EOD quotes with provenance; unavailable symbols are omitted, never invented. */

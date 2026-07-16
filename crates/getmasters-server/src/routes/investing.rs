@@ -13,9 +13,12 @@ use axum::Json;
 
 use getmasters_core::market::MarketData;
 use getmasters_core::store::DeleteAssetOutcome;
-use getmasters_proto::{AssetDto, InvestingWorkspaceDto, QuoteDto};
+use getmasters_proto::{AssetDto, BriefingDto, InvestingWorkspaceDto, QuoteDto};
 
 use crate::state::{AppError, AppState};
+
+/// Cap on briefings returned by the feed.
+const MAX_BRIEFINGS: usize = 50;
 
 /// Cap on symbols per quote batch (the Watch page requests one batch per mount).
 const MAX_QUOTE_SYMBOLS: usize = 30;
@@ -103,6 +106,63 @@ pub async fn untrack_asset(
             format!("{symbol} is a ledger entry (holding/sold), not a watch"),
         )),
     }
+}
+
+#[utoipa::path(
+    get,
+    path = "/projects/{id}/briefings",
+    operation_id = "list_project_briefings",
+    params(("id" = String, Path, description = "Project id")),
+    responses((status = 200, description = "Delivered proactive-touch briefings, newest first (silent NO_ALERT runs hidden)", body = [BriefingDto])),
+    tag = "investing"
+)]
+pub async fn list_briefings(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<BriefingDto>>, AppError> {
+    let store = state.agent.store();
+    store.get_project(&id)?; // 404 if unknown
+    let recipe_store =
+        crate::recipe::RecipeStore::new(state.project_dir(&id), id.clone(), store.clone());
+
+    let mut out = Vec::new();
+    for run in store.list_project_runs(&id, MAX_BRIEFINGS)? {
+        // Only successful, non-silent runs are briefings. The full body is the run session's
+        // final assistant message (the 200-char run summary is just history metadata).
+        if run.status != "ok" {
+            continue;
+        }
+        let Some(session_id) = run.session_id else {
+            continue;
+        };
+        let body = store
+            .list_messages(&session_id)
+            .ok()
+            .and_then(|msgs| {
+                msgs.into_iter()
+                    .rev()
+                    .find(|m| m.role == "assistant")
+                    .map(|m| m.content)
+            })
+            .unwrap_or_default();
+        if crate::investing::is_silent(&body) {
+            continue;
+        }
+        let title = recipe_store
+            .load(&run.recipe_name)
+            .ok()
+            .flatten()
+            .map(|r| r.title)
+            .unwrap_or_else(|| run.recipe_name.clone());
+        out.push(BriefingDto {
+            started_at: run.started_at,
+            recipe_name: run.recipe_name,
+            title,
+            session_id: Some(session_id),
+            body,
+        });
+    }
+    Ok(Json(out))
 }
 
 #[derive(serde::Deserialize, utoipa::IntoParams)]

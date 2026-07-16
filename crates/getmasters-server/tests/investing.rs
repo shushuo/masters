@@ -129,6 +129,89 @@ async fn workspace_seeds_idempotently_and_respects_user_masters() {
         Some("user edited"),
         "non-empty instructions are user content and must never be overwritten"
     );
+
+    // Proactive-touch recipes + schedules seeded once — the second call added no duplicates.
+    let schedules = store.list_schedules(&ws.project_id).unwrap();
+    let touch: Vec<&str> = schedules.iter().map(|s| s.recipe_name.as_str()).collect();
+    assert_eq!(schedules.len(), 2, "{touch:?}");
+    assert!(touch.contains(&"weekly-watch-digest"));
+    assert!(touch.contains(&"watch-mover-sentinel"));
+    for s in &schedules {
+        assert!(s.deliver_notify, "touch schedules deliver via notify");
+        assert!(!s.deliver_email, "email stays opt-in");
+        assert!(s.next_run_at.is_some(), "cron schedules get a first fire");
+    }
+}
+
+#[tokio::test]
+async fn briefings_feed_hides_silent_and_failed_runs() {
+    let dir = temp_dir();
+    let store = Store::open_in_memory().unwrap();
+    let fetcher = Arc::new(FixtureFetcher::new(vec![]));
+    let state = state_with(&store, &dir, fetcher);
+    let pid = store.create_project("inv", None).unwrap();
+
+    // A schedule to hang runs off (the feed joins runs → schedules for the recipe name).
+    let sid = store
+        .create_schedule(
+            &pid,
+            "weekly-watch-digest",
+            "{}",
+            "cron",
+            Some("0 12 * * SUN"),
+            Some(1),
+            true,
+            false,
+        )
+        .unwrap();
+
+    // One real briefing: a run session whose final assistant message is the report body.
+    let real = store
+        .create_session(Some(&pid), Some("recipe:weekly-watch-digest"))
+        .unwrap();
+    store.insert_message(&real.id, "user", "prompt").unwrap();
+    store
+        .insert_message(&real.id, "assistant", "## 本周关注周报\n一切正常。")
+        .unwrap();
+    store
+        .record_scheduled_run(&sid, &pid, "ok", Some(&real.id), Some("本周关注周报"))
+        .unwrap();
+
+    // A silent pass (NO_ALERT) and a failed run — both must be hidden from the feed.
+    let silent = store
+        .create_session(Some(&pid), Some("recipe:weekly-watch-digest"))
+        .unwrap();
+    store.insert_message(&silent.id, "user", "prompt").unwrap();
+    store
+        .insert_message(&silent.id, "assistant", "NO_ALERT")
+        .unwrap();
+    // scheduled_runs is UNIQUE(schedule_id, started_at) — space the records out.
+    tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+    store
+        .record_scheduled_run(&sid, &pid, "ok", Some(&silent.id), Some("NO_ALERT"))
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+    store
+        .record_scheduled_run(&sid, &pid, "error", None, Some("boom"))
+        .unwrap();
+
+    let base = serve(state).await;
+    let client = reqwest::Client::new();
+    let briefings: Vec<getmasters_proto::BriefingDto> = client
+        .get(format!("{base}/projects/{pid}/briefings"))
+        .bearer_auth(TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    assert_eq!(briefings.len(), 1);
+    assert_eq!(briefings[0].recipe_name, "weekly-watch-digest");
+    assert!(briefings[0].body.contains("本周关注周报"));
+    // No recipe file on disk in this test — the title falls back to the slug.
+    assert_eq!(briefings[0].title, "weekly-watch-digest");
 }
 
 #[tokio::test]
