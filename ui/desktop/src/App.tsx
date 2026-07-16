@@ -8,6 +8,7 @@ import { Settings } from "./components/Settings";
 import { Projects } from "./components/Projects";
 import { ProjectDetail } from "./components/ProjectDetail";
 import { MastersHub } from "./components/MastersHub";
+import { Watch } from "./components/Watch";
 import { Onboarding } from "./components/Onboarding";
 import { Sidebar } from "./components/Sidebar";
 import { checkForUpdate, installUpdate, type Update } from "./lib/updater";
@@ -143,6 +144,8 @@ export function App() {
             onClose={() => navigate({ view: "chat" })}
             onRerunSetup={() => setForceOnboarding(true)}
           />
+        ) : view === "watch" ? (
+          <Watch client={client} />
         ) : view === "masters" ? (
           <MastersHub client={client} />
         ) : view === "projects" ? (

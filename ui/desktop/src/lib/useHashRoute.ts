@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 /** The primary views, mirrored in the URL hash so back/forward and deep links work. */
-export type View = "chat" | "masters" | "projects" | "settings";
+export type View = "chat" | "watch" | "masters" | "projects" | "settings";
 
 export interface Route {
   view: View;
@@ -13,7 +13,7 @@ export interface Route {
   tab?: string;
 }
 
-const VIEWS: View[] = ["chat", "masters", "projects", "settings"];
+const VIEWS: View[] = ["chat", "watch", "masters", "projects", "settings"];
 
 export function parseHash(hash: string): Route {
   const parts = hash.replace(/^#\/?/, "").split("/").filter(Boolean);

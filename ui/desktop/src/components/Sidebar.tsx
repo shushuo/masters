@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   FolderKanban,
   MessagesSquare,
+  Star,
   Monitor,
   Moon,
   PanelLeft,
@@ -18,9 +19,11 @@ import { IconButton, PandaMark } from "./ui";
 import { cn } from "./ui/cn";
 import { applyTheme, getTheme, nextTheme, type Theme } from "../lib/theme";
 import type { View } from "../lib/useHashRoute";
+import { t } from "../lib/i18n";
 
 const NAV: { key: View; label: string; icon: LucideIcon }[] = [
   { key: "chat", label: "Chat", icon: MessagesSquare },
+  { key: "watch", label: t("nav.watch"), icon: Star },
   { key: "masters", label: "Masters", icon: UserRound },
   { key: "projects", label: "Projects", icon: FolderKanban },
 ];

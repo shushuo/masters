@@ -52,6 +52,9 @@ export default {
           bg: "var(--color-info-bg)",
           fg: "var(--color-info-fg)",
         },
+        // Investing vertical: CN-convention market colors (red = gain, green = loss).
+        gain: "var(--color-gain)",
+        loss: "var(--color-loss)",
       },
       borderRadius: {
         sm: "var(--radius-sm)",
@@ -70,6 +73,10 @@ export default {
           "system-ui",
           "-apple-system",
           "Segoe UI",
+          "PingFang SC",
+          "Hiragino Sans GB",
+          "Microsoft YaHei",
+          "Noto Sans CJK SC",
           "sans-serif",
         ],
         // The wordmark / screen-title face. Maps to `font-display` (used in MastersHub);
