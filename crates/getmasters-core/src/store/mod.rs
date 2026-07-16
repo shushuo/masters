@@ -1496,7 +1496,11 @@ impl Store {
         let sql = format!(
             "SELECT {} FROM assets WHERE project_id = ?1 {} ORDER BY watched_at DESC",
             Self::ASSET_COLS,
-            if state.is_some() { "AND state = ?2" } else { "" }
+            if state.is_some() {
+                "AND state = ?2"
+            } else {
+                ""
+            }
         );
         let mut stmt = conn.prepare(&sql)?;
         let rows = match state {
@@ -2524,8 +2528,18 @@ mod tests {
     fn asset_delete_refused_unless_watching() {
         let s = Store::open_in_memory().unwrap();
         let pid = s.create_project("inv", None).unwrap();
-        s.upsert_asset_watch(&pid, "sz000001", "平安银行", "cn-a", "stock", None, None, None, 1)
-            .unwrap();
+        s.upsert_asset_watch(
+            &pid,
+            "sz000001",
+            "平安银行",
+            "cn-a",
+            "stock",
+            None,
+            None,
+            None,
+            1,
+        )
+        .unwrap();
         // Simulate the lifecycle progressing (holding tools land in V1).
         s.lock()
             .execute(
@@ -2539,7 +2553,17 @@ mod tests {
         );
         // And a re-track never downgrades the state back to watching.
         let (row, created) = s
-            .upsert_asset_watch(&pid, "sz000001", "平安银行", "cn-a", "stock", None, None, None, 2)
+            .upsert_asset_watch(
+                &pid,
+                "sz000001",
+                "平安银行",
+                "cn-a",
+                "stock",
+                None,
+                None,
+                None,
+                2,
+            )
             .unwrap();
         assert!(!created);
         assert_eq!(row.state, "holding");

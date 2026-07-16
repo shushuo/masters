@@ -93,10 +93,7 @@ pub fn parse_quote(symbol: &str, body: &str) -> Result<FetchedQuote, String> {
     }
     Ok(FetchedQuote {
         symbol: symbol.to_string(),
-        name: data
-            .get("f58")
-            .and_then(Value::as_str)
-            .map(str::to_string),
+        name: data.get("f58").and_then(Value::as_str).map(str::to_string),
         market: "cn-a".into(),
         trade_date,
         close,
@@ -209,7 +206,8 @@ mod tests {
     #[test]
     fn suspended_dash_fields_become_none_and_all_missing_errs() {
         // Suspended: latest is "-", prev close still numeric.
-        let body = r#"{"data":{"f43":"-","f58":"某停牌股","f60":123450,"f86":1721026800,"f170":"-"}}"#;
+        let body =
+            r#"{"data":{"f43":"-","f58":"某停牌股","f60":123450,"f86":1721026800,"f170":"-"}}"#;
         let q = parse_quote("sz000001", body).unwrap();
         assert_eq!(q.close, None);
         assert_eq!(q.prev_close, Some(1234.5));

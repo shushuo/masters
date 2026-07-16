@@ -290,10 +290,18 @@ mod tests {
         let grants = Arc::new(GrantSet::empty());
         let embedder = Arc::new(Embedder::from_provider(Arc::new(MockProvider::new()), 8));
         let index = build_index(store.clone(), 8);
-        let all = ["files", "knowledge", "memory", "skills", "study", "assets", "market"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let all = [
+            "files",
+            "knowledge",
+            "memory",
+            "skills",
+            "study",
+            "assets",
+            "market",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
         let fetcher: Arc<dyn crate::market::MarketFetcher> = Arc::new(
             crate::market::testing::FixtureFetcher::single("sh600519", "贵州茅台", 1700.0),
         );
@@ -334,7 +342,10 @@ mod tests {
             .unwrap();
         assert!(!err, "{out}");
         assert!(out.contains("now watching"));
-        let (out, err) = mgr.call_tool("assets.list_assets", &json!({})).await.unwrap();
+        let (out, err) = mgr
+            .call_tool("assets.list_assets", &json!({}))
+            .await
+            .unwrap();
         assert!(!err);
         assert!(out.contains("sh600519"));
         let (out, err) = mgr

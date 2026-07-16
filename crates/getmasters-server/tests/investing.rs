@@ -96,7 +96,10 @@ async fn workspace_seeds_idempotently_and_respects_user_masters() {
     assert_eq!(risk.body, "user content");
 
     // The standing team + the compliance instructions (written only when empty).
-    let team = store.get_team(&ws.project_id, "investing").unwrap().unwrap();
+    let team = store
+        .get_team(&ws.project_id, "investing")
+        .unwrap()
+        .unwrap();
     assert_eq!(team.coordinator_slug, "chief");
     let instructions = store
         .project_instructions(&ws.project_id)
@@ -184,7 +187,17 @@ async fn assets_list_and_untrack_roundtrip() {
 
     // A holding is lifecycle-guarded → 409.
     store
-        .upsert_asset_watch(&pid, "sz000001", "平安银行", "cn-a", "stock", None, None, None, 2)
+        .upsert_asset_watch(
+            &pid,
+            "sz000001",
+            "平安银行",
+            "cn-a",
+            "stock",
+            None,
+            None,
+            None,
+            2,
+        )
         .unwrap();
     store
         .with_conn(|conn| {
@@ -280,7 +293,14 @@ async fn group_master_tracks_asset_silently() {
     })
     .unwrap();
     store
-        .upsert_team(&pid, "squad", "Squad", "", "analyst", &["analyst".to_string()])
+        .upsert_team(
+            &pid,
+            "squad",
+            "Squad",
+            "",
+            "analyst",
+            &["analyst".to_string()],
+        )
         .unwrap();
 
     let session = group::start(&state, &pid, "squad", None).unwrap();

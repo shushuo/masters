@@ -253,20 +253,41 @@ mod tests {
                 dto.body.contains("【合规边界（不可违反）】"),
                 "{slug} missing compliance block"
             );
-            assert!(dto.body.contains("【数字纪律】"), "{slug} missing number rule");
-            assert!(!dto.allowed_tools.is_empty(), "{slug} must be least-privilege scoped");
+            assert!(
+                dto.body.contains("【数字纪律】"),
+                "{slug} missing number rule"
+            );
+            assert!(
+                !dto.allowed_tools.is_empty(),
+                "{slug} must be least-privilege scoped"
+            );
         }
         // The research-card authors carry the fixed five sections + the track mandate.
         for slug in ["chief", "analyst"] {
             let (_, dto) = four.iter().find(|(s, _)| *s == slug).unwrap();
-            for section in ["## 是什么", "## 数据快照", "## 值得注意", "## 风险点", "## 近期事件"] {
-                assert!(dto.output_contract.contains(section), "{slug} missing {section}");
+            for section in [
+                "## 是什么",
+                "## 数据快照",
+                "## 值得注意",
+                "## 风险点",
+                "## 近期事件",
+            ] {
+                assert!(
+                    dto.output_contract.contains(section),
+                    "{slug} missing {section}"
+                );
             }
-            assert!(dto.body.contains("assets.track_asset"), "{slug} missing track mandate");
+            assert!(
+                dto.body.contains("assets.track_asset"),
+                "{slug} missing track mandate"
+            );
             assert!(dto.allowed_tools.iter().any(|t| t == "assets.track_asset"));
         }
         // The risk officer can read but never track/untrack.
         let (_, risk) = four.iter().find(|(s, _)| *s == "risk").unwrap();
-        assert!(!risk.allowed_tools.iter().any(|t| t.starts_with("assets.track")));
+        assert!(!risk
+            .allowed_tools
+            .iter()
+            .any(|t| t.starts_with("assets.track")));
     }
 }

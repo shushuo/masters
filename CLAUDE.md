@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Current state: Phase 0 + Phase 1 + Phase 2 (2a/2b/2c) + Phase 3a/3b (Study) + 3c (Recipes) + 3d (Scheduler) + 3e (Delivery) + 4a (Masters) + 4b (Teams + router) + 4c (Group chat) + 4d (External MCP) + 4e (Group streaming) + 4f (Multi-round) + 4g (Group tool visibility) + 4h (Portable bundles) + 4i (External ACP master agents) + Desktop UI (design system, full management UI, ACP selector, chat history, audit viewer, theme toggle, group max-rounds) + Masters sidebar (standalone/global masters + system templates + quick chat) + Hardening pass (loop robustness, i18n, event log, ACP gate) implemented
+## Current state: Phase 0 + Phase 1 + Phase 2 (2a/2b/2c) + Phase 3a/3b (Study) + 3c (Recipes) + 3d (Scheduler) + 3e (Delivery) + 4a (Masters) + 4b (Teams + router) + 4c (Group chat) + 4d (External MCP) + 4e (Group streaming) + 4f (Multi-round) + 4g (Group tool visibility) + 4h (Portable bundles) + 4i (External ACP master agents) + Desktop UI (design system, full management UI, ACP selector, chat history, audit viewer, theme toggle, group max-rounds) + Masters sidebar (standalone/global masters + system templates + quick chat) + Hardening pass (loop robustness, i18n, event log, ACP gate) + Investing vertical slice 1 (assets+market servers, expert-team pack, ask→track loop, Watch UI) implemented
 
 **Phase 0 (Foundations)** and **Phase 1a** are in place (see `docs/08-roadmap.md` and
 `DEVELOPMENT.md`): a Rust Cargo workspace under `crates/` (`getmasters-proto`, `getmasters-core`,
@@ -398,6 +398,39 @@ even headless) and answers allow-once/reject-once (never blind first-option); gr
 the harness the speaker-labelled transcript; `session/update` tool calls map onto
 ToolCallStarted/ToolResult + the event log (4g visibility for ACP); runs are bounded by
 `GETMASTERS_ACP_TIMEOUT_SECS` (default 600s).
+
+**Investing vertical slice 1** (docs/11 MVP start; ADR-0015/0016/0017 implemented, 0018 deferred):
+the ask→track closed loop on the unchanged foundation. **Core** — migrations **0021** (`assets`
+lifecycle spine `watching→holding→sold` + first-interest snapshot; `positions`/`txns` schema'd for
+V1) and **0022** (`price_cache` with provenance: source/fetched_at/validation, global not
+project-scoped); two new Study-precedent built-ins: `getmasters-core::assets` (`AssetsServer` —
+`track_asset` Write = D8 silent-but-revocable under headless dispatch, `untrack_asset`
+lifecycle-guarded, `list_assets` Read) and `getmasters-core::market` (`MarketDataServer` —
+`get_quote`/`search_symbol` Read; one shared `MarketData::quote` cache-or-fetch path, 60min TTL,
+stale fallback flagged, explicit error over fabricated numbers). The upstream fetch is a
+**`MarketFetcher` trait injected from the server** (EmailTransport seam — core stays HTTP-free per
+ADR-0015's lean-core reading, see its implementation note); `FixtureFetcher`/`FailingFetcher` behind
+`testing`. `classify()` Read-arm gains `get_quote|search_symbol|list_assets` (narrow ruling,
+documented). **Server** — `market_fetch.rs` Eastmoney push2 adapter (pure parsers, canned-JSON
+tests, zero network in CI; Tencent = documented second-source slot); `AppState.market` +
+`with_market_fetcher`; `assets`/`market` in `ALL_BUILTIN_SERVERS`+`IMPLEMENTED_SERVERS` (FR-19
+free); `master_templates::investing()` — the 4-master pack (chief/analyst/risk/coach, stable ASCII
+slugs via the new `MasterStore::create_with_slug` seam, Chinese personas embedding the shared
+compliance block + research-card contract + D8 track mandate); `investing::ensure_workspace`
+(idempotent lazy seed: default project → global masters w/ catalog semantics → standing `investing`
+team → compliance instructions only-when-empty) behind `POST /investing/workspace`. **HTTP** —
+`GET /projects/{id}/assets`, `DELETE .../assets/{symbol}` (204/404/409 lifecycle guard),
+`GET .../quotes?symbols=` (batch-capped, per-symbol degrade) — same DeckDto flow, openapi+schema.ts
+regenerated in lock-step. **Desktop** — `Watch.tsx` (asset cards: watch reason, snapshot line,
+honest quote w/ ▲▼ + data-as-of + stale ⚠, untrack, empty-state bait questions, embedded GroupChat
+vs the standing team, fixed compliance footer); `src/lib/i18n.ts` (tiny typed dict, zh-first, new
+surfaces only); CJK font fallbacks on `--font-sans`; `--color-gain`/`--color-loss` tokens (CN
+red=gain, both theme blocks). Integration tests (`tests/investing.rs`, all offline) cover workspace
+idempotence + user-slug protection, the assets roundtrip, quote provenance + cache accounting, and
+the **D8 closed loop** (a group master calls `assets.track_asset` headlessly through the gate).
+**Deferred within the vertical:** proactive-touch recipes (哨兵/周报), the cloud cross-section
+snapshot + weekly bulletin, briefings view, JournalServer, FinCalcServer + portfolio unlock,
+redaction mode, dual-source validation, screenshot ingestion (ADR-0018).
 
 **Deferred to Phase 3 (later slices) and Phase 4:** the per-session **audit-log viewer** (`GET
 /sessions/{id}/audit`) and **group `max_rounds` over the WS stream** have since landed in the Desktop

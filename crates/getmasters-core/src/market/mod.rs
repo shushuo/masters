@@ -137,7 +137,8 @@ impl MarketData {
     /// back to any stale cached row (`stale: true`); nothing at all → `Err` (explicit absence,
     /// ADR-0017 §5 — never a fabricated number).
     pub async fn quote(&self, symbol: &str, now_ms: i64) -> Result<QuoteView, String> {
-        let symbol = normalize_symbol(symbol).ok_or_else(|| format!("unknown symbol '{symbol}'"))?;
+        let symbol =
+            normalize_symbol(symbol).ok_or_else(|| format!("unknown symbol '{symbol}'"))?;
         let cached = self
             .store
             .latest_price(&symbol)
@@ -234,8 +235,7 @@ pub mod testing {
                 .quotes
                 .values()
                 .filter(|q| {
-                    q.symbol.contains(query)
-                        || q.name.as_deref().is_some_and(|n| n.contains(query))
+                    q.symbol.contains(query) || q.name.as_deref().is_some_and(|n| n.contains(query))
                 })
                 .map(|q| SymbolHit {
                     symbol: q.symbol.clone(),
@@ -314,7 +314,10 @@ mod policy_tests {
         assert_eq!(quote_of(&v2), (Some(1700.0), "fixture", false));
         assert_eq!(fetcher.call_count(), 1);
         // Past the TTL it re-fetches.
-        let _ = md.quote("sh600519", 1_000 + QUOTE_TTL_MS + 1).await.unwrap();
+        let _ = md
+            .quote("sh600519", 1_000 + QUOTE_TTL_MS + 1)
+            .await
+            .unwrap();
         assert_eq!(fetcher.call_count(), 2);
     }
 

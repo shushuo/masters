@@ -67,7 +67,10 @@ pub fn build_app(state: AppState) -> Router {
         )
         .route("/projects/{id}/skills", get(routes::projects::list_skills))
         .route("/projects/{id}/decks", get(routes::projects::list_decks))
-        .route("/investing/workspace", post(routes::investing::ensure_workspace))
+        .route(
+            "/investing/workspace",
+            post(routes::investing::ensure_workspace),
+        )
         .route("/projects/{id}/assets", get(routes::investing::list_assets))
         .route(
             "/projects/{id}/assets/{symbol}",

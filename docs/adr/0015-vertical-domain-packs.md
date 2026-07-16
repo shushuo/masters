@@ -59,3 +59,16 @@ architecture** — and in a way that could be repeated for a future vertical?
   verification must keep covering.
 - **Deferred:** extraction of a formal "vertical template"; a second vertical to validate
   repeatability; marketplace/community packs beyond the system catalog.
+
+## Implementation note (slice 1)
+
+"Core stays domain-free" is implemented as the **established lean-core discipline**, not a
+crate-placement rule: Store-backed built-in servers live in `getmasters-core` (the Study
+precedent — `getmasters-mcp` hosts only the Store-free `FilesServer`, and a Store-owning server
+there would invert the dependency), so `assets/` and `market/` are core modules under the
+lean-core constraints — **zero new core dependencies, no HTTP/protocol code** (the market
+upstream fetch is a `MarketFetcher` trait injected from `getmasters-server`, mirroring the
+`EmailTransport` seam), plain SQLite ints/strings/reals, thin tool logic. L3 content shipped as
+`master_templates::investing()` (four masters embedding the compliance blocks) seeded lazily by
+`investing::ensure_workspace`; L4 as the desktop Watch view. This amends nothing — it records
+how the L2 placement reads in practice.
