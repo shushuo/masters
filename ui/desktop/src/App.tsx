@@ -9,6 +9,7 @@ import { Projects } from "./components/Projects";
 import { ProjectDetail } from "./components/ProjectDetail";
 import { MastersHub } from "./components/MastersHub";
 import { Watch } from "./components/Watch";
+import { Briefings } from "./components/Briefings";
 import { Onboarding } from "./components/Onboarding";
 import { Sidebar } from "./components/Sidebar";
 import { checkForUpdate, installUpdate, type Update } from "./lib/updater";
@@ -146,6 +147,8 @@ export function App() {
           />
         ) : view === "watch" ? (
           <Watch client={client} />
+        ) : view === "briefings" ? (
+          <Briefings client={client} />
         ) : view === "masters" ? (
           <MastersHub client={client} />
         ) : view === "projects" ? (

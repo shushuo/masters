@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Current state: Phase 0 + Phase 1 + Phase 2 (2a/2b/2c) + Phase 3a/3b (Study) + 3c (Recipes) + 3d (Scheduler) + 3e (Delivery) + 4a (Masters) + 4b (Teams + router) + 4c (Group chat) + 4d (External MCP) + 4e (Group streaming) + 4f (Multi-round) + 4g (Group tool visibility) + 4h (Portable bundles) + 4i (External ACP master agents) + Desktop UI (design system, full management UI, ACP selector, chat history, audit viewer, theme toggle, group max-rounds) + Masters sidebar (standalone/global masters + system templates + quick chat) + Hardening pass (loop robustness, i18n, event log, ACP gate) + Investing vertical slice 1 (assets+market servers, expert-team pack, ask→track loop, Watch UI) implemented
+## Current state: Phase 0 + Phase 1 + Phase 2 (2a/2b/2c) + Phase 3a/3b (Study) + 3c (Recipes) + 3d (Scheduler) + 3e (Delivery) + 4a (Masters) + 4b (Teams + router) + 4c (Group chat) + 4d (External MCP) + 4e (Group streaming) + 4f (Multi-round) + 4g (Group tool visibility) + 4h (Portable bundles) + 4i (External ACP master agents) + Desktop UI (design system, full management UI, ACP selector, chat history, audit viewer, theme toggle, group max-rounds) + Masters sidebar (standalone/global masters + system templates + quick chat) + Hardening pass (loop robustness, i18n, event log, ACP gate) + Investing vertical slice 1 (assets+market servers, expert-team pack, ask→track loop, Watch UI) + slice 2 (proactive touch: weekly digest + mover sentinel recipes w/ silent-pass, briefings feed) implemented
 
 **Phase 0 (Foundations)** and **Phase 1a** are in place (see `docs/08-roadmap.md` and
 `DEVELOPMENT.md`): a Rust Cargo workspace under `crates/` (`getmasters-proto`, `getmasters-core`,
@@ -428,9 +428,20 @@ surfaces only); CJK font fallbacks on `--font-sans`; `--color-gain`/`--color-los
 red=gain, both theme blocks). Integration tests (`tests/investing.rs`, all offline) cover workspace
 idempotence + user-slug protection, the assets roundtrip, quote provenance + cache accounting, and
 the **D8 closed loop** (a group master calls `assets.track_asset` headlessly through the gate).
-**Deferred within the vertical:** proactive-touch recipes (哨兵/周报), the cloud cross-section
-snapshot + weekly bulletin, briefings view, JournalServer, FinCalcServer + portfolio unlock,
-redaction mode, dual-source validation, screenshot ingestion (ADR-0018).
+**Slice 2 (proactive touch)** added the second touchpoint on the same machinery: two
+seeded touch recipes (`investing::touch_recipes` — `weekly-watch-digest` Sun 12:00 UTC and
+`watch-mover-sentinel` weekdays 07:30 UTC post-close Beijing, cron day-of-week uses names since
+the `cron` crate rejects `0`), seeded **only-when-absent** (user-edited recipes/schedules are
+never overwritten, unlike system masters) with `deliver_notify` on; the **silent-pass contract**
+(`investing::NO_ALERT` + `is_silent` — a run with nothing to say is recorded but not delivered
+and hidden from the feed: 超阈值才说话); `Store::list_project_runs` (runs⋈schedules) + `GET
+/projects/{id}/briefings` (`BriefingDto`, full body = the run session's final assistant message;
+ok + non-silent only) + a desktop `Briefings.tsx` feed (📰 nav, markdown cards, 就此提问 →
+embedded expert GroupChat). **Deferred within the vertical:** the earnings sentinel (needs a
+cninfo disclosure data face: adapter + filings/calendar cache), the cloud cross-section snapshot
++ weekly bulletin + daily master-quote pack, unread state on briefings, JournalServer,
+FinCalcServer + portfolio unlock, redaction mode, dual-source validation, screenshot ingestion
+(ADR-0018).
 
 **Deferred to Phase 3 (later slices) and Phase 4:** the per-session **audit-log viewer** (`GET
 /sessions/{id}/audit`) and **group `max_rounds` over the WS stream** have since landed in the Desktop

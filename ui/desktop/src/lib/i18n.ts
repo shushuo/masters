@@ -39,6 +39,20 @@ const dict = {
     zh: "ⓘ 以上为事实与风险梳理，不构成投资建议",
     en: "ⓘ Facts and risk notes only — not investment advice",
   },
+  "nav.briefings": { zh: "简报", en: "Briefings" },
+  "briefings.title": { zh: "简报", en: "Briefings" },
+  "briefings.subtitle": {
+    zh: "例行的周报与异动提醒会出现在这里；没有值得说的就不打扰你。",
+    en: "Weekly digests and mover alerts land here; quiet weeks stay quiet.",
+  },
+  "briefings.loading": { zh: "加载中…", en: "Loading…" },
+  "briefings.empty.title": { zh: "还没有简报", en: "No briefings yet" },
+  "briefings.empty.hint": {
+    zh: "关注一些标的后，每周日晚会有关注周报；工作日收盘后若有明显异动也会提醒。",
+    en: "Watch some instruments — a weekly digest arrives Sunday evening, and post-close mover alerts fire only when something moved.",
+  },
+  "briefings.ask": { zh: "就此提问", en: "Ask about this" },
+  "briefings.error": { zh: "加载失败：", en: "Failed to load: " },
 } as const;
 
 export type I18nKey = keyof typeof dict;

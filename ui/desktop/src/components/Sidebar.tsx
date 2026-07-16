@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   FolderKanban,
   MessagesSquare,
+  Newspaper,
   Star,
   Monitor,
   Moon,
@@ -24,6 +25,7 @@ import { t } from "../lib/i18n";
 const NAV: { key: View; label: string; icon: LucideIcon }[] = [
   { key: "chat", label: "Chat", icon: MessagesSquare },
   { key: "watch", label: t("nav.watch"), icon: Star },
+  { key: "briefings", label: t("nav.briefings"), icon: Newspaper },
   { key: "masters", label: "Masters", icon: UserRound },
   { key: "projects", label: "Projects", icon: FolderKanban },
 ];
