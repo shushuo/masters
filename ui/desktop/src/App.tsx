@@ -148,7 +148,7 @@ export function App() {
   }, []);
 
   return (
-    <div className="flex h-full bg-bg text-text">
+    <div className="flex h-full gap-1 bg-bg text-text">
       <Sidebar
         health={health}
         view={view}

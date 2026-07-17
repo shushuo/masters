@@ -24,10 +24,12 @@
 
 /*
  * Design tokens — the 《大师》 system (docs/12-ux-redesign.md §5).
- * Mood: 新中式极简 · 宣纸与墨 · 低饱和 — warm rice-paper surfaces, ink text,
- * a deep 黛青 (indigo-teal) accent. All UI color flows through these CSS
- * variables; the dark ("墨面") theme overrides them in one block so components
- * built on the token utilities recolor automatically (no `dark:`).
+ * Mood: Claude-Cowork-informed warm minimalism — paper-white neutrals, ink text,
+ * a warm coral accent, pill shapes, a floating sidebar. Finance-audience rule:
+ * NO green anywhere in brand/status/semantics — the only green in the entire UI
+ * is the market loss color (跌, quote-number convention), kept deliberately.
+ * All UI color flows through these CSS variables; the dark theme overrides them
+ * in one block so components built on the token utilities recolor automatically.
  *
  * Theme mechanics: `lib/theme.ts` always resolves the preference (system/light/
  * dark) to an explicit `data-theme` on <html> before first paint, so the dark
@@ -37,69 +39,65 @@
   /* Resolved eagerly to a concrete scheme by theme.ts; light is the base. */
   color-scheme: light;
 
-  /* typography — body stays Inter var + CJK sans; display is a serif CJK stack
-     (system fonts, zero packaging cost) reserved for the wordmark, page titles,
-     and the daily master-quote. */
+  /* typography — clean sans everywhere (Cowork posture); the display token is
+     kept as a seam but resolves to the same sans stack. */
   --font-sans: "Inter var", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI",
     "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
-  --font-display: "Songti SC", "STSong", "SimSun", "Noto Serif CJK SC", "Source Han Serif SC",
-    Georgia, serif;
+  --font-display: var(--font-sans);
 
-  /* surfaces — 宣纸 rice-paper warm white */
-  --color-bg: #f7f4ec; /* app canvas */
-  --color-surface: #f1ede2; /* sidebar / sunken panels */
-  --color-surface-2: #e9e4d5; /* cards, hover wells */
-  --color-border: #e0dac8; /* hairlines */
-  --color-border-strong: #cfc7ae; /* inputs, weightier dividers */
+  /* surfaces — warm paper white */
+  --color-bg: #faf9f5; /* app canvas (the window ground the content sits on) */
+  --color-surface: #f4f2ec; /* the floating sidebar / sunken panels */
+  --color-surface-2: #ebe8e0; /* cards, hover wells */
+  --color-border: #e6e2d9; /* hairlines */
+  --color-border-strong: #d4cfc3; /* inputs, weightier dividers */
 
-  /* text — 墨 ink */
-  --color-text: #26292e;
-  --color-text-muted: #5c6166;
-  --color-text-faint: #787d82; /* timestamps, provenance — AA on bg */
+  /* text — warm ink */
+  --color-text: #1f1e1d;
+  --color-text-muted: #68645c;
+  --color-text-faint: #8a857b; /* timestamps, provenance */
 
-  /* accent — 黛青 deep indigo-teal */
-  --color-accent: #3d5a5e;
-  --color-accent-hover: #324b4f;
-  --color-accent-fg: #f4f1e8; /* paper on 黛青 */
-  --color-accent-subtle: #e3e7e0; /* active-nav tint */
+  /* accent — warm coral (理财吉利暖色; deep enough for white button text) */
+  --color-accent: #c2593f;
+  --color-accent-hover: #a94b34;
+  --color-accent-fg: #ffffff;
+  --color-accent-subtle: #f7e5de; /* active-nav tint */
 
   /* brand — the wordmark / seal block */
-  --color-brand: #3d5a5e;
-  --color-brand-sage: #6f8f8a;
+  --color-brand: #c2593f;
+  --color-brand-sage: #c98a76; /* secondary warm tint (name kept for the token seam) */
 
-  /* semantic state — same low-saturation family, tuned to the paper canvas */
-  --color-tool-bg: #f0ead9;
-  --color-tool-fg: #77602c; /* AA on tool-bg */
-  --color-tool-border: #e2d8bc;
-  --color-success: #4c7a5e;
-  --color-success-hover: #40684f;
+  /* semantic state — warm, green-free family */
+  --color-tool-bg: #f2ede1;
+  --color-tool-fg: #77602c;
+  --color-tool-border: #e4dcc6;
+  /* success = calm blue (the Cowork "ready" hue) — NOT green, by product rule */
+  --color-success: #4a72a8;
+  --color-success-hover: #3d6193;
   --color-danger: #a8534b;
   --color-danger-hover: #91463f;
-  --color-danger-bg: #f4e7e3;
+  --color-danger-bg: #f6e7e4;
   --color-danger-fg: #91463f;
-  /* warning — dry amber, distinct from the earthy `tool` tint */
   --color-warning: #9c7020;
   --color-warning-bg: #f8f0da;
   --color-warning-fg: #815c16;
-  /* info — 黛青-tinted, for passive notices */
-  --color-info: #3f6367;
-  --color-info-bg: #e5ebe8;
-  --color-info-fg: #33555a;
-  /* market gain/loss (investing) — CN convention: 朱红 red = gain/涨, 松绿 green = loss/跌
-     (the OPPOSITE of success/danger, hence distinct tokens; a region toggle is FR-INV-16/P2).
-     Deliberately low-saturation for the slow-investing calm; always pair with ▲/▼
-     redundant coding for color-blind safety. */
+  --color-info: #4a6d8c;
+  --color-info-bg: #e7edf2;
+  --color-info-fg: #3b5872;
+  /* market gain/loss (investing) — CN convention: 朱红 red = gain/涨, 松绿 green = loss/跌.
+     THE ONLY GREEN IN THE UI (quote numbers + ▲▼ redundant coding only; a region toggle is
+     FR-INV-16/P2). Low-saturation for the slow-investing calm. */
   --color-gain: #b23a32;
   --color-loss: #2c7a52;
 
-  /* radii */
-  --radius-sm: 7px;
-  --radius: 10px;
-  --radius-lg: 14px;
+  /* radii — Cowork roundness; buttons/badges are full pills via rounded-full */
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
 
-  /* shadows (soft, warm ink-tinted) */
-  --shadow-sm: 0 1px 2px rgba(60, 56, 44, 0.06), 0 1px 1px rgba(60, 56, 44, 0.04);
-  --shadow: 0 2px 8px rgba(60, 56, 44, 0.09), 0 1px 2px rgba(60, 56, 44, 0.05);
+  /* shadows (soft, warm neutral) */
+  --shadow-sm: 0 1px 2px rgba(40, 38, 33, 0.06), 0 1px 1px rgba(40, 38, 33, 0.04);
+  --shadow: 0 2px 8px rgba(40, 38, 33, 0.09), 0 1px 2px rgba(40, 38, 33, 0.05);
 
   /* motion & focus */
   --duration-fast: 100ms;
@@ -108,36 +106,36 @@
 }
 
 /*
- * 墨面 (dark) — ink canvas, warm paper-grey text; the accent lifts to a lighter
- * 黛青 so it reads on ink. Defined ONCE: theme.ts stamps `data-theme="dark"` for
- * both the pinned-dark and system-follows-dark cases.
+ * Dark — warm deep neutrals (the Cowork dark posture), coral lifted for ink ground.
+ * Defined ONCE: theme.ts stamps `data-theme="dark"` for both the pinned-dark and
+ * system-follows-dark cases.
  */
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --color-bg: #1c1e21;
-  --color-surface: #242629;
-  --color-surface-2: #2c2f33;
-  --color-border: #34373c;
-  --color-border-strong: #43474d;
+  --color-bg: #1f1e1d;
+  --color-surface: #262624;
+  --color-surface-2: #30302d;
+  --color-border: #3a3a36;
+  --color-border-strong: #4a4944;
 
-  --color-text: #e6e2d6;
-  --color-text-muted: #a8a89e;
-  --color-text-faint: #8f8f86; /* AA on bg */
+  --color-text: #f0efea;
+  --color-text-muted: #b3b0a7;
+  --color-text-faint: #8f8c83;
 
-  --color-accent: #7fa3a6;
-  --color-accent-hover: #93b6b9;
-  --color-accent-fg: #1c1e21;
-  --color-accent-subtle: #263335;
+  --color-accent: #e08b6d;
+  --color-accent-hover: #e9a58c;
+  --color-accent-fg: #1f1e1d;
+  --color-accent-subtle: #3b2e28;
 
-  --color-brand: #7fa3a6;
-  --color-brand-sage: #7fa3a6;
+  --color-brand: #e08b6d;
+  --color-brand-sage: #c98a76;
 
   --color-tool-bg: #2b2820;
   --color-tool-fg: #cfb87e;
   --color-tool-border: #3b372a;
-  --color-success: #61a67d;
-  --color-success-hover: #72b78d;
+  --color-success: #7ba3d4;
+  --color-success-hover: #8fb2dd;
   --color-danger: #cf7d72;
   --color-danger-hover: #da948b;
   --color-danger-bg: #2e201d;
@@ -145,9 +143,9 @@
   --color-warning: #d3a854;
   --color-warning-bg: #2e2919;
   --color-warning-fg: #dfbd79;
-  --color-info: #7fa3a6;
-  --color-info-bg: #202b2c;
-  --color-info-fg: #a2c5c8;
+  --color-info: #8fb2d4;
+  --color-info-bg: #23292f;
+  --color-info-fg: #a9c6e0;
   --color-gain: #d4756c;
   --color-loss: #5cb885;
 

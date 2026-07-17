@@ -23,6 +23,7 @@ Projects），是工程师的心智不是用户的；专家没有面孔（气泡
    功能页。界面用分区表达状态推移，用户不需要理解「lifecycle」。
 4. **反焦虑的节奏** — 不做自动刷新的滚动数字；「数据截至」常显；安静是好消息
    （简报空态用正向措辞）；不用红点轰炸（未读至多一枚微点）。慢投资的产品不制造盯盘冲动。
+   附则（理财避讳）：品牌/状态/语义色一律**无绿**——全 UI 唯一的绿是行情跌色（松绿 + ▼，惯例）。
 5. **信任前置，视觉安静** — 来源、截至日期、stale ⚠、审计轨迹随手可查，但都是低对比的
    辅助层；未估值就写「未估值」，绝不用视觉手段掩饰数据缺口。
 6. **合规即版式** — 研究卡的固定章节与固定尾注是**设计元素**（分节卡片 + 定式尾行），
@@ -112,57 +113,61 @@ Projects），是工程师的心智不是用户的；专家没有面孔（气泡
 - **错误**：行情类错误一律降级为「暂无数据」+ 原因短语，绝不空白也绝不编数。
 - **动效**：仅透明度/位移 120–200ms；遵循现有 `prefers-reduced-motion` 全局重置。
 
-## 5. 视觉语言（新 token 体系）
+## 5. 视觉语言（Cowork 参照的暖极简体系）
 
-气质：**新中式极简 · 宣纸与墨 · 低饱和**。所有色经 CSS 变量（`src/index.css` 两个主题块），
-tailwind.config.js 别名映射不变。
+气质：**Claude Cowork 式暖极简** —— 纸白中性 + 墨字 + 珊瑚橘强调，药丸形状，浮动侧栏。
+理财避讳规则：品牌与状态**无绿**；唯一的绿是行情跌色。所有色经 CSS 变量
+（`src/index.css` 两个主题块），tailwind 别名映射不变。
 
-### 5.1 光面（light）
+### 5.1 光面
 
 | token | 值 | 说明 |
 |---|---|---|
-| `--color-bg` | `#f7f4ec` | 宣纸暖白 |
-| `--color-surface` | `#f1ede2` | 纸面 |
-| `--color-surface-2` | `#e9e4d5` | 纸面二级 |
-| `--color-border` | `#e0dac8` / strong `#cfc7ae` | 纸纹 |
-| `--color-text` | `#26292e` | 墨 |
-| `--color-text-muted` | `#5c6166` / faint `#8a8f94` | 淡墨 |
-| `--color-accent` | `#3d5a5e`（hover `#324b4f`，fg `#f4f1e8`，subtle `#e3e7e0`） | 黛青 |
-| `--color-gain` | `#b23a32` | 朱红=涨（CN 惯例，低饱和） |
-| `--color-loss` | `#2c7a52` | 松绿=跌 |
-| success/danger/warning/info/tool | 同族低饱和重调 | 语义层 |
+| `--color-bg` | `#faf9f5` | 窗口底（暖纸白） |
+| `--color-surface` | `#f4f2ec` | 浮动侧栏/下沉面板 |
+| `--color-surface-2` | `#ebe8e0` | 卡片、hover |
+| `--color-border` | `#e6e2d9` / strong `#d4cfc3` | 发丝线 |
+| `--color-text` | `#1f1e1d` | 暖墨 |
+| `--color-text-muted` | `#68645c` / faint `#8a857b` | 次级/时间戳 |
+| `--color-accent` | `#c2593f`（hover `#a94b34`，fg `#fff`，subtle `#f7e5de`） | **珊瑚橘** |
+| `--color-success` | `#4a72a8` | **蓝**（守护点/成功态——去绿规则） |
+| `--color-info` | `#4a6d8c` 系 | 蓝灰 |
+| `--color-gain` | `#b23a32` | 朱红=涨 |
+| `--color-loss` | `#2c7a52` | 松绿=跌（全 UI 唯一的绿） |
+| warning / danger / tool | 琥珀 / 赤 / 暖沙 | 均无绿 |
 
-### 5.2 墨面（dark）
+### 5.2 墨面
 
-墨底暖灰字同套变量：bg `#1c1e21`、surface `#242629`、surface-2 `#2c2f33`、text `#e6e2d6`、
-muted `#a8a89e`、accent `#7fa3a6`（fg `#1c1e21`）、gain `#d4756c`、loss `#5cb885`、
-border `#34373c`。
+暖深中性（Cowork 暗色姿态）：bg `#1f1e1d` · surface `#262624` · surface-2 `#30302d` ·
+border `#3a3a36` · text `#f0efea` · muted `#b3b0a7` · accent `#e08b6d`（fg `#1f1e1d`）·
+success 蓝 `#7ba3d4` · gain `#d4756c` / loss `#5cb885`。
 
-### 5.3 字体与密度
+### 5.3 字体与形状
 
-- `--font-display`: `"Songti SC", "STSong", "SimSun", "Noto Serif CJK SC", serif` —
-  仅用于字标、页标题、大师一句（系统栈，零打包成本）。
-- `--font-sans` 不变（Inter var + CJK 黑体栈）；数据一律 `tabular-nums`。
-- 行高/留白放宽一档（正文 `leading-relaxed`，页面纵向留白 ↑）；radius 不变；
-  阴影暖化（暖灰而非冷黑）。
+- **全无行线**：`--font-display` = `var(--font-sans)`（Inter var + CJK 黑体栈）；serif 移除。
+  数字一律 `tabular-nums`。
+- **形状语言**：按钮/图标钮/徽标 = `rounded-full` 药丸；radius token sm `8px` / DEFAULT
+  `12px` / lg `16px`（卡片、输入、工具步骤随之圆润）。
+- **浮动侧栏**：侧栏是 `m-2 mr-0 rounded-lg border shadow-sm` 的浮动面板（Cowork 姿态），
+  内容直接坐在窗口底色上。
+- 行高/留白保持放宽（正文 line-height 1.6）；动效遵循 reduced-motion。
 
 ### 5.4 大师色彩身份（slug → 中文名 / 色）
 
-| slug | 中文名 | 色（light/dark 同 hue） |
+| slug | 中文名 | 色 |
 |---|---|---|
-| chief | 首席顾问 | 黛青 `#3d5a5e` |
+| chief | 首席顾问 | 珊瑚 `#c2593f`（随品牌） |
 | analyst | 研究员 | 赭石 `#8c6239` |
 | risk | 风控官 | 绛紫 `#7a4a58` |
 | allocation | 配置规划师 | 黄栌 `#9a7b2f` |
 | coach | 投资教练 | 黛蓝 `#4a5d7a` |
 
-头像 = 中文名首字圆片（白字/色底，14px 圆形）。未知 slug → 灰底 slug 首字母。
+头像 = 中文名首字圆片（白字/色底）。未知 slug → 灰底首字母。
 
 ### 5.5 品牌
 
-- 字标：宋体「大师」双字 + 小号 “Masters” 拉丁副标；印章式「大」字方形字符块
-  （accent 底 + 纸色字，纯 CSS）替代 PandaMark；`logo.svg` 熊猫弃用（D12：吉祥物
-  另行设计，字标先行）。
+- 字标：无行线「大师」双字 + 小号 “MASTERS” 拉丁副标；珊瑚底「大」字方形印章块
+  （纯 CSS）为图形记忆点（吉祥物暂缺位，D12）。
 - 窗口/页面标题：「大师 Masters」。
 
 ## 6. 文案基调

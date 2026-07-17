@@ -39,7 +39,7 @@ export function Wordmark({
   return (
     <span className={cn("inline-flex items-baseline gap-2", className)}>
       <PandaMark className={cn("self-center", mark)} />
-      <span className={cn("font-display font-semibold tracking-wide text-text", text)}>
+      <span className={cn("font-display font-semibold text-text", text)}>
         大师
       </span>
       <span className={cn("font-medium uppercase tracking-widest text-faint", sub)}>

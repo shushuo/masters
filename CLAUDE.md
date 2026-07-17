@@ -473,7 +473,12 @@ seam: `POST /projects/{id}/teams/{slug}/session` now accepts an optional
 the calm positive quiet state + an unread nav dot (localStorage seen-mark). zh-first i18n across
 all redesigned surfaces (default locale zh; Settings gains 语言 + workbench rows); Onboarding
 carries the three promises (数字有来源/数据留本机/不荐股). Verified headless via Playwright
-walkthrough (onboarding/ask/watch/briefings/lab redirect, light+dark).
+walkthrough (onboarding/ask/watch/briefings/lab redirect, light+dark). A follow-up **visual
+retune** (finance no-green rule + Cowork-informed style) replaced the greenish 黛青 accent with
+warm coral (`#c2593f`/dark `#e08b6d`), turned success/info blue (the ONLY green left is the
+market loss color), dropped the serif entirely (`--font-display` = sans), made buttons/badges
+pill-shaped (`rounded-full`, radius 8/12/16), floated the sidebar (`m-2 rounded-lg shadow-sm`),
+and recolored the chief avatar to coral (docs/12 §5 rewritten accordingly).
 **Deferred within the vertical:** the cloud cross-section snapshot
 + weekly bulletin + daily master-quote pack, unread state on briefings, JournalServer,
 sell/close flows + coached quarterly reviews (hypothetical returns live only there, D10), redaction

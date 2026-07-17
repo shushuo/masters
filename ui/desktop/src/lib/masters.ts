@@ -15,7 +15,7 @@ export interface MasterIdentity {
 }
 
 export const MASTER_IDENTITIES: Record<string, MasterIdentity> = {
-  chief: { name: "首席顾问", nameEn: "Chief Advisor", color: "#3d5a5e" },
+  chief: { name: "首席顾问", nameEn: "Chief Advisor", color: "#c2593f" },
   analyst: { name: "研究员", nameEn: "Analyst", color: "#8c6239" },
   risk: { name: "风控官", nameEn: "Risk Officer", color: "#7a4a58" },
   allocation: { name: "配置规划师", nameEn: "Allocation Planner", color: "#9a7b2f" },

@@ -10,7 +10,7 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const base =
-  "inline-flex items-center justify-center gap-2 rounded-sm font-medium transition-colors " +
+  "inline-flex items-center justify-center gap-2 rounded-full font-medium transition-colors " +
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 " +
   "disabled:opacity-50 disabled:pointer-events-none";
 
