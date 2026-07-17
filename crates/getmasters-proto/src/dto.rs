@@ -468,6 +468,14 @@ pub struct BundleImportResult {
 
 /// Body for `POST /sessions/{id}/group` — a user message into a group chat (Phase 4c, FR-43).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, ToSchema)]
+pub struct StartGroupSessionRequest {
+    /// Optional session title (e.g. the first question, truncated) so the topic list is
+    /// recognizable; absent → the `group:<team>` default.
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 pub struct GroupPostRequest {
     pub content: String,
     /// Optional per-call cap on mention-driven follow-up rounds (Phase 4f). Clamped into `1..=5`;
@@ -794,6 +802,165 @@ pub struct EmailSettingsUpdate {
     pub from: Option<String>,
     #[serde(default)]
     pub to: Option<String>,
+}
+
+/// One tracked instrument on the asset lifecycle spine (investing vertical, ADR-0016).
+/// `state`: `watching` | `holding` | `sold`. The snapshot fields are the first-interest record.
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct AssetDto {
+    /// Canonical symbol, e.g. `sh600519`.
+    pub symbol: String,
+    pub name: String,
+    pub market: String,
+    /// `"stock"` | `"fund"`.
+    pub kind: String,
+    pub state: String,
+    #[serde(default)]
+    pub watch_reason: Option<String>,
+    /// Epoch ms of first interest.
+    pub watched_at: i64,
+    #[serde(default)]
+    pub snapshot_price: Option<f64>,
+    /// `YYYY-MM-DD` the snapshot price is for.
+    #[serde(default)]
+    pub snapshot_date: Option<String>,
+}
+
+/// A market quote with provenance (ADR-0017). `stale` = an old cached value served because a
+/// refresh failed — the UI must render this honestly, never hide it.
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct QuoteDto {
+    pub symbol: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    /// `YYYY-MM-DD` the quote is for.
+    pub trade_date: String,
+    #[serde(default)]
+    pub close: Option<f64>,
+    #[serde(default)]
+    pub prev_close: Option<f64>,
+    #[serde(default)]
+    pub change_pct: Option<f64>,
+    /// Adapter id, e.g. `eastmoney`.
+    pub source: String,
+    /// Epoch ms.
+    pub fetched_at: i64,
+    /// `"unverified"` | `"verified"` | `"disputed"`.
+    pub validation: String,
+    pub stale: bool,
+}
+
+/// One proactive-touch briefing (a delivered scheduled-run output — the 简报流 feed item).
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct BriefingDto {
+    /// Epoch ms when the run started.
+    pub started_at: i64,
+    /// The producing recipe's slug (e.g. `weekly-watch-digest`).
+    pub recipe_name: String,
+    /// The recipe's display title (falls back to the slug when the recipe file is gone).
+    pub title: String,
+    /// The run session (for audit/trace).
+    pub session_id: Option<String>,
+    /// The full briefing body (markdown — the run's final assistant message).
+    pub body: String,
+}
+
+/// One index in the cloud daily market cross-section (ADR-0017 — the market-wide snapshot the
+/// cloud publishes once per trading day).
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct MarketIndexDto {
+    pub symbol: String,
+    pub name: String,
+    #[serde(default)]
+    pub close: Option<f64>,
+    #[serde(default)]
+    pub change_pct: Option<f64>,
+    pub trade_date: String,
+}
+
+/// The human-reviewed weekly bulletin (D13 「本周市场三件事」 — retrospective, market-wide, no
+/// individual names). Only the latest published one is served.
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct MarketBulletinDto {
+    pub slug: String,
+    pub title: String,
+    pub body: String,
+    #[serde(default)]
+    pub published_at: Option<String>,
+}
+
+/// One 大师一句 quote from the cloud pack (D13 daily heartbeat).
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct DailyQuoteDto {
+    pub text: String,
+    #[serde(default)]
+    pub who: String,
+}
+
+/// The cloud daily payload (`GET {catalog_base}/api/snapshot/daily`), proxied to the desktop by
+/// the daemon (best-effort, briefly cached). Empty when the cloud is unreachable — the desktop
+/// then falls back to its local quote pack, so the heartbeat is a nicety, never a dependency.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, ToSchema)]
+pub struct DailySnapshotDto {
+    #[serde(default)]
+    pub snapshot_date: Option<String>,
+    #[serde(default)]
+    pub indices: Vec<MarketIndexDto>,
+    #[serde(default)]
+    pub bulletin: Option<MarketBulletinDto>,
+    #[serde(default)]
+    pub quotes: Vec<DailyQuoteDto>,
+}
+
+/// One valued holding in the portfolio overview (nullable everywhere — an unvalued position is
+/// reported honestly, never estimated).
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct PortfolioPositionDto {
+    pub symbol: String,
+    pub name: String,
+    #[serde(default)]
+    pub quantity: Option<f64>,
+    #[serde(default)]
+    pub cost: Option<f64>,
+    #[serde(default)]
+    pub close: Option<f64>,
+    /// `quantity × close` when both known.
+    #[serde(default)]
+    pub value: Option<f64>,
+    /// Share of the valued total (0..1).
+    #[serde(default)]
+    pub weight: Option<f64>,
+    #[serde(default)]
+    pub trade_date: Option<String>,
+    #[serde(default)]
+    pub source: Option<String>,
+    pub stale: bool,
+}
+
+/// The deterministic portfolio overview (FinCalc — docs/11 M2).
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct PortfolioDto {
+    #[serde(default)]
+    pub total_value: Option<f64>,
+    /// Herfindahl–Hirschman concentration over valued weights.
+    #[serde(default)]
+    pub hhi: Option<f64>,
+    #[serde(default)]
+    pub top3_share: Option<f64>,
+    pub positions: Vec<PortfolioPositionDto>,
+    /// Holdings that could not be valued (missing quantity or quote).
+    pub unvalued_count: i64,
+}
+
+/// The seeded investing workspace (docs/11): the default project + the standing expert team.
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct InvestingWorkspaceDto {
+    pub project_id: String,
+    pub team_slug: String,
+    /// The coordinator master slug (answers unaddressed messages).
+    pub coordinator: String,
+    /// Member master slugs.
+    pub members: Vec<String>,
 }
 
 /// Uniform error envelope returned on any 4xx/5xx.

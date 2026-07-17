@@ -6,6 +6,7 @@ pub mod catalog;
 pub mod connectors;
 pub mod group;
 pub mod health;
+pub mod investing;
 pub mod masters;
 pub mod masters_global;
 pub mod messages;
@@ -15,6 +16,7 @@ pub mod schedules;
 pub mod sessions;
 pub mod settings;
 pub mod skills_global;
+pub mod snapshot;
 pub mod teams;
 pub mod ws;
 

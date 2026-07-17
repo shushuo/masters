@@ -114,6 +114,89 @@ pub struct RecipeRow {
     pub source_file: String,
 }
 
+/// One tracked instrument on the asset lifecycle spine (investing vertical, ADR-0016).
+/// `state` walks `watching → holding → sold`; the watchlist and the ledger are states of the
+/// same row. The snapshot fields record the *first interest* (price/date at watch time, D10).
+#[derive(Clone, Debug)]
+pub struct AssetRow {
+    pub id: String,
+    pub project_id: String,
+    /// Canonical symbol, e.g. `sh600519`.
+    pub symbol: String,
+    pub name: String,
+    /// Market id, e.g. `cn-a`.
+    pub market: String,
+    /// `"stock"` | `"fund"`.
+    pub kind: String,
+    /// `"watching"` | `"holding"` | `"sold"`.
+    pub state: String,
+    /// Why the user cared, extracted from conversation.
+    pub watch_reason: Option<String>,
+    /// Epoch ms of first interest.
+    pub watched_at: i64,
+    pub snapshot_price: Option<f64>,
+    /// `YYYY-MM-DD` the snapshot price is for.
+    pub snapshot_date: Option<String>,
+}
+
+/// One position row (progressive ledger, ADR-0016): all value fields nullable — holdings
+/// accumulate from conversation, partial data is normal.
+#[derive(Clone, Debug)]
+pub struct PositionRow {
+    pub asset_id: String,
+    pub quantity: Option<f64>,
+    pub cost: Option<f64>,
+    pub account: Option<String>,
+}
+
+/// Outcome of an asset untrack attempt — deletion is a lifecycle-guarded operation
+/// (ADR-0016: only a `watching` row may be removed; holdings are a ledger, not a list entry).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeleteAssetOutcome {
+    Deleted,
+    NotFound,
+    /// The row exists but is not in `watching` state — refuse.
+    NotWatching,
+}
+
+/// One cached market quote with provenance (ADR-0017). Global — a quote is a fact about the
+/// market, not project data. `validation` is `unverified` until dual-source cross-validation.
+#[derive(Clone, Debug)]
+pub struct PriceRow {
+    pub symbol: String,
+    pub market: String,
+    pub name: Option<String>,
+    /// `YYYY-MM-DD` the quote is for.
+    pub trade_date: String,
+    pub close: Option<f64>,
+    pub prev_close: Option<f64>,
+    pub change_pct: Option<f64>,
+    /// Adapter id, e.g. `eastmoney`.
+    pub source: String,
+    /// Epoch ms.
+    pub fetched_at: i64,
+    /// `"unverified"` | `"verified"` | `"disputed"`.
+    pub validation: String,
+}
+
+/// One cached disclosure announcement (the earnings sentinel's data face, ADR-0017/D11).
+#[derive(Clone, Debug)]
+pub struct AnnouncementRow {
+    pub symbol: String,
+    /// Upstream announcement id (dedup key with `source`).
+    pub ann_id: String,
+    pub title: String,
+    /// `YYYY-MM-DD` the announcement is dated.
+    pub ann_date: String,
+    /// Epoch ms of publication.
+    pub ann_time: i64,
+    pub url: Option<String>,
+    /// e.g. `"cninfo"`.
+    pub source: String,
+    /// Epoch ms.
+    pub fetched_at: i64,
+}
+
 /// One indexed master (`masters/<slug>.md`) — listing metadata only (Phase 4a, FR-39/46).
 #[derive(Clone, Debug)]
 pub struct MasterRow {
@@ -176,6 +259,18 @@ pub struct ScheduledRunRow {
     pub started_at: i64,
     /// `"ok"` | `"error"`.
     pub status: String,
+    pub session_id: Option<String>,
+    pub summary: Option<String>,
+}
+
+/// A scheduled run joined with its schedule's recipe name — the project-wide briefings feed
+/// (investing vertical M8; the full output lives in the run session's transcript).
+#[derive(Clone, Debug)]
+pub struct ProjectRunRow {
+    pub started_at: i64,
+    /// `"ok"` | `"error"`.
+    pub status: String,
+    pub recipe_name: String,
     pub session_id: Option<String>,
     pub summary: Option<String>,
 }
@@ -1344,6 +1439,371 @@ impl Store {
         Ok(row)
     }
 
+    // --- Assets (investing vertical — the lifecycle spine, ADR-0016) --------
+
+    fn map_asset(r: &rusqlite::Row) -> rusqlite::Result<AssetRow> {
+        Ok(AssetRow {
+            id: r.get(0)?,
+            project_id: r.get(1)?,
+            symbol: r.get(2)?,
+            name: r.get(3)?,
+            market: r.get(4)?,
+            kind: r.get(5)?,
+            state: r.get(6)?,
+            watch_reason: r.get(7)?,
+            watched_at: r.get(8)?,
+            snapshot_price: r.get(9)?,
+            snapshot_date: r.get(10)?,
+        })
+    }
+
+    const ASSET_COLS: &'static str = "id, project_id, symbol, name, market, kind, state, \
+         watch_reason, watched_at, snapshot_price, snapshot_date";
+
+    /// Track an instrument as `watching` (silent-but-revocable, D8). Idempotent: an existing
+    /// row keeps its original `watched_at` and snapshot — the snapshot is the *first-interest*
+    /// record (D10) — and its state (never downgrades `holding`/`sold` back to `watching`);
+    /// only `updated_at` moves, and a missing `watch_reason`/`name` may be back-filled.
+    /// Returns `(row, newly_created)`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn upsert_asset_watch(
+        &self,
+        project_id: &str,
+        symbol: &str,
+        name: &str,
+        market: &str,
+        kind: &str,
+        reason: Option<&str>,
+        snapshot_price: Option<f64>,
+        snapshot_date: Option<&str>,
+        now: i64,
+    ) -> Result<(AssetRow, bool)> {
+        let conn = self.lock();
+        let existing = conn
+            .query_row(
+                &format!(
+                    "SELECT {} FROM assets WHERE project_id = ?1 AND symbol = ?2",
+                    Self::ASSET_COLS
+                ),
+                rusqlite::params![project_id, symbol],
+                Self::map_asset,
+            )
+            .optional()?;
+        if let Some(row) = existing {
+            // First interest wins: keep watched_at/snapshot/state; back-fill reason only if empty.
+            conn.execute(
+                "UPDATE assets SET updated_at = ?1,
+                        watch_reason = COALESCE(watch_reason, ?2)
+                 WHERE id = ?3",
+                rusqlite::params![now, reason, row.id],
+            )?;
+            let row = AssetRow {
+                watch_reason: row.watch_reason.clone().or(reason.map(str::to_string)),
+                ..row
+            };
+            return Ok((row, false));
+        }
+        let id = new_id();
+        conn.execute(
+            "INSERT INTO assets (id, project_id, symbol, name, market, kind, state,
+                                 watch_reason, watched_at, snapshot_price, snapshot_date,
+                                 created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'watching', ?7, ?8, ?9, ?10, ?8, ?8)",
+            rusqlite::params![
+                id,
+                project_id,
+                symbol,
+                name,
+                market,
+                kind,
+                reason,
+                now,
+                snapshot_price,
+                snapshot_date
+            ],
+        )?;
+        let row = conn.query_row(
+            &format!("SELECT {} FROM assets WHERE id = ?1", Self::ASSET_COLS),
+            [&id],
+            Self::map_asset,
+        )?;
+        Ok((row, true))
+    }
+
+    /// All tracked assets for a project (optionally filtered by state), newest interest first.
+    pub fn list_assets(&self, project_id: &str, state: Option<&str>) -> Result<Vec<AssetRow>> {
+        let conn = self.lock();
+        let sql = format!(
+            "SELECT {} FROM assets WHERE project_id = ?1 {} ORDER BY watched_at DESC",
+            Self::ASSET_COLS,
+            if state.is_some() {
+                "AND state = ?2"
+            } else {
+                ""
+            }
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = match state {
+            Some(s) => stmt
+                .query_map(rusqlite::params![project_id, s], Self::map_asset)?
+                .collect::<rusqlite::Result<Vec<_>>>()?,
+            None => stmt
+                .query_map([project_id], Self::map_asset)?
+                .collect::<rusqlite::Result<Vec<_>>>()?,
+        };
+        Ok(rows)
+    }
+
+    /// One tracked asset by canonical symbol.
+    pub fn get_asset(&self, project_id: &str, symbol: &str) -> Result<Option<AssetRow>> {
+        let conn = self.lock();
+        let row = conn
+            .query_row(
+                &format!(
+                    "SELECT {} FROM assets WHERE project_id = ?1 AND symbol = ?2",
+                    Self::ASSET_COLS
+                ),
+                rusqlite::params![project_id, symbol],
+                Self::map_asset,
+            )
+            .optional()?;
+        Ok(row)
+    }
+
+    /// Untrack (delete) an asset — lifecycle-guarded: only a `watching` row may be removed
+    /// (ADR-0016: holdings/sold are ledger records, not list entries).
+    pub fn delete_asset(&self, project_id: &str, symbol: &str) -> Result<DeleteAssetOutcome> {
+        let conn = self.lock();
+        let n = conn.execute(
+            "DELETE FROM assets WHERE project_id = ?1 AND symbol = ?2 AND state = 'watching'",
+            rusqlite::params![project_id, symbol],
+        )?;
+        if n > 0 {
+            return Ok(DeleteAssetOutcome::Deleted);
+        }
+        let exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM assets WHERE project_id = ?1 AND symbol = ?2",
+                rusqlite::params![project_id, symbol],
+                |_| Ok(true),
+            )
+            .optional()?
+            .unwrap_or(false);
+        Ok(if exists {
+            DeleteAssetOutcome::NotWatching
+        } else {
+            DeleteAssetOutcome::NotFound
+        })
+    }
+
+    /// Move an asset to a lifecycle state (e.g. `watching → holding`). Returns false when the
+    /// asset doesn't exist.
+    pub fn set_asset_state(&self, project_id: &str, symbol: &str, state: &str) -> Result<bool> {
+        let n = self.lock().execute(
+            "UPDATE assets SET state = ?3, updated_at = ?4
+             WHERE project_id = ?1 AND symbol = ?2",
+            rusqlite::params![project_id, symbol, state, now_ms()],
+        )?;
+        Ok(n > 0)
+    }
+
+    /// Upsert an asset's (single) position row — progressive accumulation: only supplied
+    /// fields overwrite, absent fields keep their prior value.
+    pub fn upsert_position(
+        &self,
+        asset_id: &str,
+        quantity: Option<f64>,
+        cost: Option<f64>,
+        account: Option<&str>,
+    ) -> Result<()> {
+        let conn = self.lock();
+        let ts = now_ms();
+        let existing: Option<String> = conn
+            .query_row(
+                "SELECT id FROM positions WHERE asset_id = ?1",
+                [asset_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        match existing {
+            Some(id) => {
+                conn.execute(
+                    "UPDATE positions SET
+                        quantity = COALESCE(?2, quantity),
+                        cost = COALESCE(?3, cost),
+                        account = COALESCE(?4, account),
+                        updated_at = ?5
+                     WHERE id = ?1",
+                    rusqlite::params![id, quantity, cost, account, ts],
+                )?;
+            }
+            None => {
+                conn.execute(
+                    "INSERT INTO positions (id, asset_id, quantity, cost, account,
+                                            created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+                    rusqlite::params![new_id(), asset_id, quantity, cost, account, ts],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Record a transaction against an asset (buy | sell | dividend).
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_txn(
+        &self,
+        asset_id: &str,
+        kind: &str,
+        quantity: Option<f64>,
+        price: Option<f64>,
+        fee: Option<f64>,
+        note: Option<&str>,
+    ) -> Result<()> {
+        self.lock().execute(
+            "INSERT INTO txns (id, asset_id, kind, quantity, price, fee, traded_at, note, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?7)",
+            rusqlite::params![new_id(), asset_id, kind, quantity, price, fee, now_ms(), note],
+        )?;
+        Ok(())
+    }
+
+    /// The project's `holding` assets joined with their position rows (the portfolio input).
+    pub fn holdings(&self, project_id: &str) -> Result<Vec<(AssetRow, Option<PositionRow>)>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {}, p.asset_id, p.quantity, p.cost, p.account
+             FROM assets a LEFT JOIN positions p ON p.asset_id = a.id
+             WHERE a.project_id = ?1 AND a.state = 'holding'
+             ORDER BY a.watched_at DESC",
+            Self::ASSET_COLS
+                .split(", ")
+                .map(|c| format!("a.{c}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))?;
+        let rows = stmt
+            .query_map([project_id], |r| {
+                let asset = Self::map_asset(r)?;
+                let pos: Option<String> = r.get(11)?;
+                let position = pos.map(|asset_id| PositionRow {
+                    asset_id,
+                    quantity: r.get(12).ok().flatten(),
+                    cost: r.get(13).ok().flatten(),
+                    account: r.get(14).ok().flatten(),
+                });
+                Ok((asset, position))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    // --- Market price cache (with provenance, ADR-0017) ---------------------
+
+    /// Insert or refresh a cached quote (`UNIQUE(symbol, trade_date, source)` upsert).
+    /// The cache only ever holds what an adapter actually returned — never a computed guess.
+    pub fn insert_price(&self, p: &PriceRow) -> Result<()> {
+        self.lock().execute(
+            "INSERT INTO price_cache (id, symbol, market, name, trade_date, close, prev_close,
+                                      change_pct, source, fetched_at, validation)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+             ON CONFLICT(symbol, trade_date, source) DO UPDATE SET
+                name = ?4, close = ?6, prev_close = ?7, change_pct = ?8,
+                fetched_at = ?10, validation = ?11",
+            rusqlite::params![
+                new_id(),
+                p.symbol,
+                p.market,
+                p.name,
+                p.trade_date,
+                p.close,
+                p.prev_close,
+                p.change_pct,
+                p.source,
+                p.fetched_at,
+                p.validation
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// The most recent cached quote for a symbol (latest trade date, then latest fetch).
+    pub fn latest_price(&self, symbol: &str) -> Result<Option<PriceRow>> {
+        let conn = self.lock();
+        let row = conn
+            .query_row(
+                "SELECT symbol, market, name, trade_date, close, prev_close, change_pct,
+                        source, fetched_at, validation
+                 FROM price_cache WHERE symbol = ?1
+                 ORDER BY trade_date DESC, fetched_at DESC LIMIT 1",
+                [symbol],
+                |r| {
+                    Ok(PriceRow {
+                        symbol: r.get(0)?,
+                        market: r.get(1)?,
+                        name: r.get(2)?,
+                        trade_date: r.get(3)?,
+                        close: r.get(4)?,
+                        prev_close: r.get(5)?,
+                        change_pct: r.get(6)?,
+                        source: r.get(7)?,
+                        fetched_at: r.get(8)?,
+                        validation: r.get(9)?,
+                    })
+                },
+            )
+            .optional()?;
+        Ok(row)
+    }
+
+    /// Insert or refresh a cached announcement (`UNIQUE(source, ann_id)` upsert).
+    pub fn insert_announcement(&self, a: &AnnouncementRow) -> Result<()> {
+        self.lock().execute(
+            "INSERT INTO announcements (id, symbol, ann_id, title, ann_date, ann_time, url,
+                                        source, fetched_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(source, ann_id) DO UPDATE SET
+                title = ?4, ann_date = ?5, ann_time = ?6, url = ?7, fetched_at = ?9",
+            rusqlite::params![
+                new_id(),
+                a.symbol,
+                a.ann_id,
+                a.title,
+                a.ann_date,
+                a.ann_time,
+                a.url,
+                a.source,
+                a.fetched_at
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// A symbol's cached announcements published since `since_ms`, newest first.
+    pub fn list_announcements(&self, symbol: &str, since_ms: i64) -> Result<Vec<AnnouncementRow>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(
+            "SELECT symbol, ann_id, title, ann_date, ann_time, url, source, fetched_at
+             FROM announcements WHERE symbol = ?1 AND ann_time >= ?2
+             ORDER BY ann_time DESC",
+        )?;
+        let rows = stmt
+            .query_map(rusqlite::params![symbol, since_ms], |r| {
+                Ok(AnnouncementRow {
+                    symbol: r.get(0)?,
+                    ann_id: r.get(1)?,
+                    title: r.get(2)?,
+                    ann_date: r.get(3)?,
+                    ann_time: r.get(4)?,
+                    url: r.get(5)?,
+                    source: r.get(6)?,
+                    fetched_at: r.get(7)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
     // --- Recipes (file-backed YAML index, Phase 3c) -------------------------
 
     /// Upsert a recipe's index row by `(project_id, name)` (the YAML file is the source of truth).
@@ -1941,6 +2401,31 @@ impl Store {
         Ok(())
     }
 
+    /// All of a project's scheduled runs (newest first, capped) with their recipe names —
+    /// the briefings feed.
+    pub fn list_project_runs(&self, project_id: &str, limit: usize) -> Result<Vec<ProjectRunRow>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(
+            "SELECT r.started_at, r.status, s.recipe_name, r.session_id, r.summary
+             FROM scheduled_runs r
+             JOIN schedules s ON s.id = r.schedule_id
+             WHERE r.project_id = ?1
+             ORDER BY r.started_at DESC LIMIT ?2",
+        )?;
+        let rows = stmt
+            .query_map(rusqlite::params![project_id, limit as i64], |r| {
+                Ok(ProjectRunRow {
+                    started_at: r.get(0)?,
+                    status: r.get(1)?,
+                    recipe_name: r.get(2)?,
+                    session_id: r.get(3)?,
+                    summary: r.get(4)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
     /// A schedule's run history (newest first).
     pub fn list_scheduled_runs(&self, schedule_id: &str) -> Result<Vec<ScheduledRunRow>> {
         let conn = self.lock();
@@ -2195,6 +2680,136 @@ mod tests {
             .unwrap()
             .iter()
             .any(|x| x.id == session.id));
+    }
+
+    #[test]
+    fn asset_watch_round_trip_and_idempotence() {
+        let s = Store::open_in_memory().unwrap();
+        let pid = s.create_project("inv", None).unwrap();
+
+        let (row, created) = s
+            .upsert_asset_watch(
+                &pid,
+                "sh600519",
+                "贵州茅台",
+                "cn-a",
+                "stock",
+                Some("用户询问该股基本面"),
+                Some(1700.0),
+                Some("2026-07-15"),
+                1_000,
+            )
+            .unwrap();
+        assert!(created);
+        assert_eq!(row.state, "watching");
+        assert_eq!(row.watched_at, 1_000);
+        assert_eq!(row.snapshot_price, Some(1700.0));
+
+        // Re-track: idempotent — first interest wins (watched_at + snapshot preserved).
+        let (row2, created2) = s
+            .upsert_asset_watch(
+                &pid,
+                "sh600519",
+                "贵州茅台",
+                "cn-a",
+                "stock",
+                Some("second time"),
+                Some(9999.0),
+                Some("2026-07-16"),
+                2_000,
+            )
+            .unwrap();
+        assert!(!created2);
+        assert_eq!(row2.watched_at, 1_000);
+        assert_eq!(row2.snapshot_price, Some(1700.0));
+        assert_eq!(row2.watch_reason.as_deref(), Some("用户询问该股基本面"));
+
+        let listed = s.list_assets(&pid, Some("watching")).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].symbol, "sh600519");
+
+        assert_eq!(
+            s.delete_asset(&pid, "sh600519").unwrap(),
+            DeleteAssetOutcome::Deleted
+        );
+        assert_eq!(
+            s.delete_asset(&pid, "sh600519").unwrap(),
+            DeleteAssetOutcome::NotFound
+        );
+        assert!(s.list_assets(&pid, None).unwrap().is_empty());
+    }
+
+    #[test]
+    fn asset_delete_refused_unless_watching() {
+        let s = Store::open_in_memory().unwrap();
+        let pid = s.create_project("inv", None).unwrap();
+        s.upsert_asset_watch(
+            &pid,
+            "sz000001",
+            "平安银行",
+            "cn-a",
+            "stock",
+            None,
+            None,
+            None,
+            1,
+        )
+        .unwrap();
+        // Simulate the lifecycle progressing (holding tools land in V1).
+        s.lock()
+            .execute(
+                "UPDATE assets SET state = 'holding' WHERE project_id = ?1 AND symbol = ?2",
+                rusqlite::params![pid, "sz000001"],
+            )
+            .unwrap();
+        assert_eq!(
+            s.delete_asset(&pid, "sz000001").unwrap(),
+            DeleteAssetOutcome::NotWatching
+        );
+        // And a re-track never downgrades the state back to watching.
+        let (row, created) = s
+            .upsert_asset_watch(
+                &pid,
+                "sz000001",
+                "平安银行",
+                "cn-a",
+                "stock",
+                None,
+                None,
+                None,
+                2,
+            )
+            .unwrap();
+        assert!(!created);
+        assert_eq!(row.state, "holding");
+    }
+
+    #[test]
+    fn price_cache_upsert_and_latest() {
+        let s = Store::open_in_memory().unwrap();
+        let mk = |trade_date: &str, close: f64, fetched_at: i64| PriceRow {
+            symbol: "sh600519".into(),
+            market: "cn-a".into(),
+            name: Some("贵州茅台".into()),
+            trade_date: trade_date.into(),
+            close: Some(close),
+            prev_close: Some(close - 10.0),
+            change_pct: Some(0.5),
+            source: "fixture".into(),
+            fetched_at,
+            validation: "unverified".into(),
+        };
+        s.insert_price(&mk("2026-07-14", 1690.0, 100)).unwrap();
+        s.insert_price(&mk("2026-07-15", 1700.0, 200)).unwrap();
+        // Same (symbol, trade_date, source) refreshes in place — no duplicate row.
+        s.insert_price(&mk("2026-07-15", 1701.0, 300)).unwrap();
+
+        let latest = s.latest_price("sh600519").unwrap().unwrap();
+        assert_eq!(latest.trade_date, "2026-07-15");
+        assert_eq!(latest.close, Some(1701.0));
+        assert_eq!(latest.fetched_at, 300);
+        assert_eq!(latest.validation, "unverified");
+        assert!(s.latest_price("sz999999").unwrap().is_none());
     }
 
     #[test]

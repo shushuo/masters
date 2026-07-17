@@ -18,7 +18,10 @@ use serde_json::Value;
 use getmasters_mcp::FilesServer;
 use getmasters_proto::FolderGrant;
 
+use crate::assets::AssetsServer;
+use crate::fincalc::FinCalcServer;
 use crate::knowledge::{Embedder, KnowledgeServer, VectorIndex};
+use crate::market::{MarketDataServer, MarketFetcher};
 use crate::memory::MemoryServer;
 use crate::permission::GrantSet;
 use crate::provider::ToolSchema;
@@ -166,6 +169,7 @@ impl ExtensionManager {
         project_dir: PathBuf,
         enabled: &std::collections::HashSet<String>,
         connectors: &[ExternalConnector],
+        market_fetcher: Option<Arc<dyn MarketFetcher>>,
     ) -> Result<Self, String> {
         let project_id = project_id.into();
         let mut mgr = Self::empty();
@@ -195,8 +199,29 @@ impl ExtensionManager {
             .await?;
         }
         if enabled.contains("study") {
-            mgr.host("study", StudyServer::new(project_id, store))
+            mgr.host("study", StudyServer::new(project_id.clone(), store.clone()))
                 .await?;
+        }
+        let project_id2 = project_id.clone();
+        if enabled.contains("assets") {
+            mgr.host("assets", AssetsServer::new(project_id, store.clone()))
+                .await?;
+        }
+        // Market data + FinCalc need the injected upstream fetcher (ADR-0015/0017: core is
+        // HTTP-free — the adapter lives in the server crate). `None` → not hosted (graceful
+        // absence).
+        if let Some(fetcher) = market_fetcher {
+            if enabled.contains("market") {
+                mgr.host(
+                    "market",
+                    MarketDataServer::new(store.clone(), fetcher.clone()),
+                )
+                .await?;
+            }
+            if enabled.contains("fincalc") {
+                mgr.host("fincalc", FinCalcServer::new(project_id2, store, fetcher))
+                    .await?;
+            }
         }
         // External MCP connectors (Phase 4d). A connector that fails to spawn/connect is logged and
         // skipped — one bad server must never take down the project's whole toolset.
@@ -275,10 +300,21 @@ mod tests {
         let grants = Arc::new(GrantSet::empty());
         let embedder = Arc::new(Embedder::from_provider(Arc::new(MockProvider::new()), 8));
         let index = build_index(store.clone(), 8);
-        let all = ["files", "knowledge", "memory", "skills", "study"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let all = [
+            "files",
+            "knowledge",
+            "memory",
+            "skills",
+            "study",
+            "assets",
+            "market",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let fetcher: Arc<dyn crate::market::MarketFetcher> = Arc::new(
+            crate::market::testing::FixtureFetcher::single("sh600519", "贵州茅台", 1700.0),
+        );
         let mgr = ExtensionManager::with_project(
             pid.clone(),
             grants,
@@ -288,6 +324,7 @@ mod tests {
             dir.clone(),
             &all,
             &[],
+            Some(fetcher),
         )
         .await
         .unwrap();
@@ -301,6 +338,33 @@ mod tests {
         assert!(names.contains(&"study.save_flashcards"));
         assert!(names.contains(&"study.review_stats"));
         assert!(names.contains(&"study.create_study_plan"));
+        assert!(names.contains(&"assets.track_asset"));
+        assert!(names.contains(&"market.get_quote"));
+
+        // Assets round-trip: track → listed; market: quote served from the fixture.
+        let (out, err) = mgr
+            .call_tool(
+                "assets.track_asset",
+                &json!({"symbol":"600519","name":"贵州茅台","reason":"test",
+                        "snapshot_price":1700.0,"snapshot_date":"2026-07-15"}),
+            )
+            .await
+            .unwrap();
+        assert!(!err, "{out}");
+        assert!(out.contains("now watching"));
+        let (out, err) = mgr
+            .call_tool("assets.list_assets", &json!({}))
+            .await
+            .unwrap();
+        assert!(!err);
+        assert!(out.contains("sh600519"));
+        let (out, err) = mgr
+            .call_tool("market.get_quote", &json!({"symbol":"sh600519"}))
+            .await
+            .unwrap();
+        assert!(!err);
+        assert!(out.contains("\"source\":\"fixture\""));
+        assert!(out.contains("1700"));
 
         // The study server round-trips: save a card, then it shows up as due for review.
         let (_, err) = mgr
@@ -359,6 +423,7 @@ mod tests {
             dir.clone(),
             &enabled,
             &[],
+            None,
         )
         .await
         .unwrap();
@@ -368,6 +433,8 @@ mod tests {
             !names.iter().any(|n| n.starts_with("memory.")),
             "memory should not be hosted: {names:?}"
         );
+        // No fetcher injected → the market server is gracefully absent even if enabled.
+        assert!(!names.iter().any(|n| n.starts_with("market.")));
         assert!(names.contains(&"skills.create_skill"));
         assert!(names.contains(&"files.read"));
 

@@ -24,13 +24,25 @@ pub const ALL_BUILTIN_SERVERS: &[&str] = &[
     "memory",
     "skills",
     "study",
+    "assets",
+    "market",
+    "fincalc",
     "masters",
     "web",
 ];
 
 /// Built-in MCP servers actually implemented today. These are the toggleable extensions (FR-19);
 /// the rest are placeholders.
-pub const IMPLEMENTED_SERVERS: &[&str] = &["files", "knowledge", "memory", "skills", "study"];
+pub const IMPLEMENTED_SERVERS: &[&str] = &[
+    "files",
+    "knowledge",
+    "memory",
+    "skills",
+    "study",
+    "assets",
+    "market",
+    "fincalc",
+];
 
 /// `settings` key holding the system default project id (backs quick chat; see
 /// [`AppState::ensure_default_project`]).
@@ -58,6 +70,11 @@ pub struct AppState {
     /// SMTP transport for outbound email delivery (Phase 3e, FR-27). The live daemon uses the real
     /// `lettre` transport; tests inject a capturing fake.
     pub email: Arc<dyn crate::delivery::EmailTransport>,
+    /// Market-data upstream adapter (investing vertical, ADR-0017). The live daemon uses the
+    /// Eastmoney adapter; tests inject the core `FixtureFetcher`.
+    pub market: Arc<dyn getmasters_core::market::MarketFetcher>,
+    /// Briefly-cached cloud daily snapshot (D13 heartbeat proxy; `(fetched_ms, payload)`).
+    snapshot_cache: Arc<Mutex<Option<(i64, getmasters_proto::DailySnapshotDto)>>>,
     /// Lazily-built, per-project agents (files + knowledge enabled), keyed by project id.
     session_agents: Arc<Mutex<HashMap<String, AgentService>>>,
 }
@@ -73,8 +90,43 @@ impl AppState {
             secrets: Arc::new(MemoryStore::new()),
             cfg: Config::default(),
             email: crate::delivery::default_transport(),
+            market: crate::market_fetch::default_fetcher(),
+            snapshot_cache: Arc::new(Mutex::new(None)),
             session_agents: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    /// The cloud daily snapshot (D13 heartbeat), briefly cached. **Best-effort**: on a fetch
+    /// failure it serves an empty payload so the desktop falls back to its local quote pack.
+    pub async fn daily_snapshot(&self) -> getmasters_proto::DailySnapshotDto {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        if let Some((at, cached)) = self.snapshot_cache.lock().unwrap().clone() {
+            if now - at < crate::snapshot::CACHE_TTL_MS {
+                return cached;
+            }
+        }
+        match crate::snapshot::fetch_daily().await {
+            Ok(payload) => {
+                *self.snapshot_cache.lock().unwrap() = Some((now, payload.clone()));
+                payload
+            }
+            Err(e) => {
+                tracing::debug!(error = %e, "daily snapshot fetch failed; serving empty");
+                getmasters_proto::DailySnapshotDto::default()
+            }
+        }
+    }
+
+    /// Use a specific market-data fetcher (tests inject the core fixture).
+    pub fn with_market_fetcher(
+        mut self,
+        market: Arc<dyn getmasters_core::market::MarketFetcher>,
+    ) -> Self {
+        self.market = market;
+        self
     }
 
     /// Use a specific secret store (the daemon supplies the OS keychain).
@@ -143,6 +195,7 @@ impl AppState {
             project_dir.clone(),
             &enabled,
             &connectors,
+            Some(self.market.clone()),
         )
         .await?;
         let agent = self

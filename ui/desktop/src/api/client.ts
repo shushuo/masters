@@ -50,6 +50,12 @@ export type EmailSettingsUpdate = components["schemas"]["EmailSettingsUpdate"];
 export type ProjectDto = components["schemas"]["ProjectDto"];
 export type ExtensionDto = components["schemas"]["ExtensionDto"];
 export type KnowledgeStatusDto = components["schemas"]["KnowledgeStatusDto"];
+export type AssetDto = components["schemas"]["AssetDto"];
+export type PortfolioDto = components["schemas"]["PortfolioDto"];
+export type DailySnapshotDto = components["schemas"]["DailySnapshotDto"];
+export type QuoteDto = components["schemas"]["QuoteDto"];
+export type InvestingWorkspaceDto = components["schemas"]["InvestingWorkspaceDto"];
+export type BriefingDto = components["schemas"]["BriefingDto"];
 
 /** Connection details handed over by the daemon handshake (`GETMASTERSD_READY`). */
 export interface DaemonConn {
@@ -265,6 +271,72 @@ export class MastersClient {
       headers: this.headers(),
     });
     if (!res.ok) throw new Error(`listDecks failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** Idempotently seed the investing workspace (default project + expert team). */
+  async ensureInvestingWorkspace(): Promise<InvestingWorkspaceDto> {
+    const res = await fetch(`${this.base()}/investing/workspace`, {
+      method: "POST",
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`ensureInvestingWorkspace failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** The project's tracked assets (newest interest first). */
+  async listAssets(projectId: string): Promise<AssetDto[]> {
+    const res = await fetch(`${this.base()}/projects/${projectId}/assets`, {
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`listAssets failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** Stop watching a symbol (the one-click revocation of a silent track). */
+  async untrackAsset(projectId: string, symbol: string): Promise<void> {
+    const res = await fetch(
+      `${this.base()}/projects/${projectId}/assets/${encodeURIComponent(symbol)}`,
+      { method: "DELETE", headers: this.headers() },
+    );
+    if (!res.ok) throw new Error(`untrackAsset failed: ${res.status}`);
+  }
+
+  /** Deterministic portfolio overview over recorded holdings (FinCalc; unvalued reported). */
+  async getPortfolio(projectId: string): Promise<PortfolioDto> {
+    const res = await fetch(`${this.base()}/projects/${projectId}/portfolio`, {
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`getPortfolio failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** The cloud daily heartbeat (D13): market cross-section + weekly bulletin + master quotes.
+   * Best-effort — the daemon returns an empty payload when the cloud is unreachable. */
+  async getDailySnapshot(): Promise<DailySnapshotDto> {
+    const res = await fetch(`${this.base()}/snapshot/daily`, { headers: this.headers() });
+    if (!res.ok) throw new Error(`getDailySnapshot failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** Delivered proactive-touch briefings, newest first (silent runs hidden). */
+  async listBriefings(projectId: string): Promise<BriefingDto[]> {
+    const res = await fetch(`${this.base()}/projects/${projectId}/briefings`, {
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`listBriefings failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** Latest EOD quotes with provenance; unavailable symbols are omitted, never invented. */
+  async listQuotes(projectId: string, symbols: string[]): Promise<QuoteDto[]> {
+    if (symbols.length === 0) return [];
+    const qs = encodeURIComponent(symbols.join(","));
+    const res = await fetch(
+      `${this.base()}/projects/${projectId}/quotes?symbols=${qs}`,
+      { headers: this.headers() },
+    );
+    if (!res.ok) throw new Error(`listQuotes failed: ${res.status}`);
     return res.json();
   }
 
@@ -607,10 +679,11 @@ export class MastersClient {
   }
 
   /** Start a group chat session bound to a team (Phase 4c). */
-  async startTeamSession(projectId: string, slug: string): Promise<SessionDto> {
+  async startTeamSession(projectId: string, slug: string, title?: string): Promise<SessionDto> {
     const res = await fetch(`${this.base()}/projects/${projectId}/teams/${slug}/session`, {
       method: "POST",
-      headers: this.headers(),
+      headers: { ...this.headers(), "content-type": "application/json" },
+      body: JSON.stringify({ title: title ?? null }),
     });
     if (!res.ok) throw new Error(`startTeamSession failed: ${res.status}`);
     return res.json();

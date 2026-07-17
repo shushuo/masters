@@ -111,8 +111,12 @@ pub async fn run_due(state: &AppState, now_ms: i64) {
 
         // Deliver the output (Phase 3e, FR-27) — only for a successful run, over the channels the
         // schedule opted into. Gated/audited inside `deliver`; never propagates.
+        // Silent pass (docs/11 M8): a proactive-touch recipe with nothing worth saying outputs
+        // the NO_ALERT sentinel (or nothing) — the run is recorded above, but nothing is
+        // delivered. "超阈值才说话，静默通过不打扰."
         if let Ok(r) = &outcome {
-            if sched.deliver_notify || sched.deliver_email {
+            let silent = crate::investing::is_silent(&r.message.content);
+            if !silent && (sched.deliver_notify || sched.deliver_email) {
                 crate::delivery::deliver(
                     state,
                     &sched.project_id,

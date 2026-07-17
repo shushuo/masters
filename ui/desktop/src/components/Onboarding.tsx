@@ -93,12 +93,20 @@ export function Onboarding({ client, onDone }: { client: MastersClient; onDone: 
       <div className="w-full max-w-md rounded-lg border border-border bg-surface p-6 text-sm shadow">
         <div className="mb-4 flex flex-col items-center text-center">
           <PandaMark className="size-14" />
-          <h2 className="mt-3 text-xl font-semibold">Welcome to Masters</h2>
+          <h2 className="mt-3 font-display text-xl font-semibold">欢迎来到「大师」</h2>
         </div>
+        {step === 1 && (
+          /* The three promises (docs/12 §3.4) — the product's posture, stated up front. */
+          <ul className="mx-auto mb-4 max-w-sm space-y-1.5 text-[13px] text-muted">
+            <li>① 数字必有来源，并注明「数据截至」——绝不心算、绝不编造。</li>
+            <li>② 你的持仓与画像只存在你自己的电脑上。</li>
+            <li>③ 不荐股、不预测、不代操作——结论永远由你自己得出。</li>
+          </ul>
+        )}
         <p className="text-center text-muted">
           {step === 1
-            ? "Connect a model provider to get started. Keys are stored in your OS keychain — never on disk."
-            : "Optionally create a workspace and grant Masters a folder it may read and write."}
+            ? "先连接一个模型服务商。密钥保存在系统钥匙串中，不落盘。"
+            : "可选：创建工作区并授予「大师」一个可读写的文件夹。"}
         </p>
 
         {step === 1 ? (

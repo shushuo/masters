@@ -23,16 +23,13 @@
 }
 
 /*
- * Design tokens — "Panda" brand system, derived from the logo
- * (assets/logo.svg): a warm cream face (#f3f3e7), a deep slate body
- * (#445159), and muted sage-teal highlights (ears / eyes). All UI color
- * flows through these CSS variables; the dark theme overrides them so
- * components built on the token utilities recolor automatically (no `dark:`).
- *
- * Brand triad:
- *   cream  #f3f3e7  → light canvas / surfaces, dark text
- *   slate  #445159  → light accent / dark canvas, brand body
- *   sage   #7ea39c  → secondary highlight, dark accent
+ * Design tokens — the 《大师》 system (docs/12-ux-redesign.md §5).
+ * Mood: Claude-Cowork-informed warm minimalism — paper-white neutrals, ink text,
+ * a warm coral accent, pill shapes, a floating sidebar. Finance-audience rule:
+ * NO green anywhere in brand/status/semantics — the only green in the entire UI
+ * is the market loss color (跌, quote-number convention), kept deliberately.
+ * All UI color flows through these CSS variables; the dark theme overrides them
+ * in one block so components built on the token utilities recolor automatically.
  *
  * Theme mechanics: `lib/theme.ts` always resolves the preference (system/light/
  * dark) to an explicit `data-theme` on <html> before first paint, so the dark
@@ -42,59 +39,65 @@
   /* Resolved eagerly to a concrete scheme by theme.ts; light is the base. */
   color-scheme: light;
 
-  /* typography */
-  --font-sans: "Inter var", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* typography — clean sans everywhere (Cowork posture); the display token is
+     kept as a seam but resolves to the same sans stack. */
+  --font-sans: "Inter var", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
   --font-display: var(--font-sans);
 
-  /* surfaces — warm cream */
-  --color-bg: #faf9f1; /* app canvas (a touch lighter than the logo cream) */
-  --color-surface: #f3f1e6; /* sidebar / sunken panels — the logo cream */
-  --color-surface-2: #eae6d6; /* cards, hover wells */
-  --color-border: #e5e1d0; /* hairlines */
-  --color-border-strong: #d6d1bb; /* inputs, weightier dividers */
+  /* surfaces — warm paper white */
+  --color-bg: #faf9f5; /* app canvas (the window ground the content sits on) */
+  --color-surface: #f4f2ec; /* the floating sidebar / sunken panels */
+  --color-surface-2: #ebe8e0; /* cards, hover wells */
+  --color-border: #e6e2d9; /* hairlines */
+  --color-border-strong: #d4cfc3; /* inputs, weightier dividers */
 
-  /* text — deep slate */
-  --color-text: #313c42; /* logo slate, darkened for body copy */
-  --color-text-muted: #5f6c72; /* secondary labels */
-  --color-text-faint: #6d787e; /* timestamps, slugs — AA on bg (4.6:1) */
+  /* text — warm ink */
+  --color-text: #1f1e1d;
+  --color-text-muted: #68645c;
+  --color-text-faint: #8a857b; /* timestamps, provenance */
 
-  /* accent — brand slate */
-  --color-accent: #445159;
-  --color-accent-hover: #353f46;
-  --color-accent-fg: #f6f5ec; /* cream on slate */
-  --color-accent-subtle: #e6ece9; /* sage-tinted active-nav tint */
+  /* accent — warm coral (理财吉利暖色; deep enough for white button text) */
+  --color-accent: #c2593f;
+  --color-accent-hover: #a94b34;
+  --color-accent-fg: #ffffff;
+  --color-accent-subtle: #f7e5de; /* active-nav tint */
 
-  /* brand — for wordmark / decorative flourishes */
-  --color-brand: #445159;
-  --color-brand-sage: #7ea39c;
+  /* brand — the wordmark / seal block */
+  --color-brand: #c2593f;
+  --color-brand-sage: #c98a76; /* secondary warm tint (name kept for the token seam) */
 
-  /* semantic state — earthy, tuned to the cream canvas */
-  --color-tool-bg: #f4efdf;
-  --color-tool-fg: #7d6229; /* AA on tool-bg (4.9:1) */
-  --color-tool-border: #e6dcbf;
-  --color-success: #4f7d5e;
-  --color-success-hover: #426a4f;
-  --color-danger: #b5524a;
-  --color-danger-hover: #9d453e;
-  --color-danger-bg: #f6e9e6;
-  --color-danger-fg: #9d453e;
-  /* warning — amber, deliberately distinct from the earthy `tool` tint */
-  --color-warning: #a6741a;
-  --color-warning-bg: #fbf1dc;
-  --color-warning-fg: #8a5e12;
-  /* info — sage-tinted, for passive notices */
-  --color-info: #3f6b64;
-  --color-info-bg: #e6efec;
-  --color-info-fg: #33564f;
+  /* semantic state — warm, green-free family */
+  --color-tool-bg: #f2ede1;
+  --color-tool-fg: #77602c;
+  --color-tool-border: #e4dcc6;
+  /* success = calm blue (the Cowork "ready" hue) — NOT green, by product rule */
+  --color-success: #4a72a8;
+  --color-success-hover: #3d6193;
+  --color-danger: #a8534b;
+  --color-danger-hover: #91463f;
+  --color-danger-bg: #f6e7e4;
+  --color-danger-fg: #91463f;
+  --color-warning: #9c7020;
+  --color-warning-bg: #f8f0da;
+  --color-warning-fg: #815c16;
+  --color-info: #4a6d8c;
+  --color-info-bg: #e7edf2;
+  --color-info-fg: #3b5872;
+  /* market gain/loss (investing) — CN convention: 朱红 red = gain/涨, 松绿 green = loss/跌.
+     THE ONLY GREEN IN THE UI (quote numbers + ▲▼ redundant coding only; a region toggle is
+     FR-INV-16/P2). Low-saturation for the slow-investing calm. */
+  --color-gain: #b23a32;
+  --color-loss: #2c7a52;
 
-  /* radii — softened to echo the rounded mark */
-  --radius-sm: 7px;
-  --radius: 10px;
-  --radius-lg: 14px;
+  /* radii — Cowork roundness; buttons/badges are full pills via rounded-full */
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
 
-  /* shadows (soft, warm-tinted) */
-  --shadow-sm: 0 1px 2px rgba(49, 60, 66, 0.05), 0 1px 1px rgba(49, 60, 66, 0.04);
-  --shadow: 0 2px 8px rgba(49, 60, 66, 0.08), 0 1px 2px rgba(49, 60, 66, 0.05);
+  /* shadows (soft, warm neutral) */
+  --shadow-sm: 0 1px 2px rgba(40, 38, 33, 0.06), 0 1px 1px rgba(40, 38, 33, 0.04);
+  --shadow: 0 2px 8px rgba(40, 38, 33, 0.09), 0 1px 2px rgba(40, 38, 33, 0.05);
 
   /* motion & focus */
   --duration-fast: 100ms;
@@ -103,47 +106,48 @@
 }
 
 /*
- * Dark palette — deep slate canvas, warm cream text, sage-teal accent (slate
- * would vanish against a slate-dark canvas, so the accent shifts to sage).
- * Defined ONCE: theme.ts stamps `data-theme="dark"` for both the pinned-dark
- * and system-follows-dark cases, so there is no media-query duplicate to sync.
+ * Dark — warm deep neutrals (the Cowork dark posture), coral lifted for ink ground.
+ * Defined ONCE: theme.ts stamps `data-theme="dark"` for both the pinned-dark and
+ * system-follows-dark cases.
  */
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --color-bg: #1a2125;
-  --color-surface: #212a2f;
-  --color-surface-2: #2a343a;
-  --color-border: #313c42;
-  --color-border-strong: #3d4951;
+  --color-bg: #1f1e1d;
+  --color-surface: #262624;
+  --color-surface-2: #30302d;
+  --color-border: #3a3a36;
+  --color-border-strong: #4a4944;
 
-  --color-text: #eceadd;
-  --color-text-muted: #9aa6a8;
-  --color-text-faint: #8a969b; /* AA on bg (4.6:1) */
+  --color-text: #f0efea;
+  --color-text-muted: #b3b0a7;
+  --color-text-faint: #8f8c83;
 
-  --color-accent: #8fb3ad;
-  --color-accent-hover: #a6c6c1;
-  --color-accent-fg: #1a2125;
-  --color-accent-subtle: #28383a;
+  --color-accent: #e08b6d;
+  --color-accent-hover: #e9a58c;
+  --color-accent-fg: #1f1e1d;
+  --color-accent-subtle: #3b2e28;
 
-  --color-brand: #8fb3ad;
-  --color-brand-sage: #8fb3ad;
+  --color-brand: #e08b6d;
+  --color-brand-sage: #c98a76;
 
-  --color-tool-bg: #2b2a1d;
-  --color-tool-fg: #d6bd84;
-  --color-tool-border: #3b3826;
-  --color-success: #5fae7d;
-  --color-success-hover: #6fbf8c;
-  --color-danger: #d97c70;
-  --color-danger-hover: #e2978d;
-  --color-danger-bg: #2e1e1c;
-  --color-danger-fg: #e2978d;
-  --color-warning: #e0b155;
-  --color-warning-bg: #302a1a;
-  --color-warning-fg: #e6c67e;
-  --color-info: #8fb3ad;
-  --color-info-bg: #1f2c2b;
-  --color-info-fg: #a9cfc9;
+  --color-tool-bg: #2b2820;
+  --color-tool-fg: #cfb87e;
+  --color-tool-border: #3b372a;
+  --color-success: #7ba3d4;
+  --color-success-hover: #8fb2dd;
+  --color-danger: #cf7d72;
+  --color-danger-hover: #da948b;
+  --color-danger-bg: #2e201d;
+  --color-danger-fg: #da948b;
+  --color-warning: #d3a854;
+  --color-warning-bg: #2e2919;
+  --color-warning-fg: #dfbd79;
+  --color-info: #8fb2d4;
+  --color-info-bg: #23292f;
+  --color-info-fg: #a9c6e0;
+  --color-gain: #d4756c;
+  --color-loss: #5cb885;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
@@ -177,6 +181,7 @@ body {
   font-family: var(--font-sans);
   background: var(--color-bg);
   color: var(--color-text);
+  line-height: 1.6; /* 空气感 — the slow-investing default */
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }

@@ -68,6 +68,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/investing/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ensure_investing_workspace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/masters": {
         parameters: {
             query?: never;
@@ -172,6 +188,54 @@ export interface paths {
             cookie?: never;
         };
         get: operations["get_project"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_project_assets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/assets/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["untrack_project_asset"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/briefings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_project_briefings"];
         put?: never;
         post?: never;
         delete?: never;
@@ -380,6 +444,38 @@ export interface paths {
             cookie?: never;
         };
         get: operations["list_project_memories"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/portfolio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_project_portfolio"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/quotes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_project_quotes"];
         put?: never;
         post?: never;
         delete?: never;
@@ -868,6 +964,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/snapshot/daily": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["daily_snapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -877,6 +989,29 @@ export interface components {
             /** @description `"read"` | `"read_write"`. */
             access: string;
             path: string;
+        };
+        /**
+         * @description One tracked instrument on the asset lifecycle spine (investing vertical, ADR-0016).
+         *     `state`: `watching` | `holding` | `sold`. The snapshot fields are the first-interest record.
+         */
+        AssetDto: {
+            /** @description `"stock"` | `"fund"`. */
+            kind: string;
+            market: string;
+            name: string;
+            /** @description `YYYY-MM-DD` the snapshot price is for. */
+            snapshot_date?: string | null;
+            /** Format: double */
+            snapshot_price?: number | null;
+            state: string;
+            /** @description Canonical symbol, e.g. `sh600519`. */
+            symbol: string;
+            watch_reason?: string | null;
+            /**
+             * Format: int64
+             * @description Epoch ms of first interest.
+             */
+            watched_at: number;
         };
         /**
          * @description One audit-log entry: a gated tool call with its permission outcome (docs/06). Read-only;
@@ -916,6 +1051,22 @@ export interface components {
             suggested_args: string[];
             /** @description The command to register (may differ from `command`, e.g. an `npx` invocation). */
             suggested_command: string;
+        };
+        /** @description One proactive-touch briefing (a delivered scheduled-run output — the 简报流 feed item). */
+        BriefingDto: {
+            /** @description The full briefing body (markdown — the run's final assistant message). */
+            body: string;
+            /** @description The producing recipe's slug (e.g. `weekly-watch-digest`). */
+            recipe_name: string;
+            /** @description The run session (for audit/trace). */
+            session_id?: string | null;
+            /**
+             * Format: int64
+             * @description Epoch ms when the run started.
+             */
+            started_at: number;
+            /** @description The recipe's display title (falls back to the slug when the recipe file is gone). */
+            title: string;
         };
         /** @description Result of importing a [`TeamBundle`] into a project: the recreated team slug + master slugs. */
         BundleImportResult: {
@@ -1042,6 +1193,22 @@ export interface components {
             members?: string[];
             name: string;
             summary?: string;
+        };
+        /** @description One 大师一句 quote from the cloud pack (D13 daily heartbeat). */
+        DailyQuoteDto: {
+            text: string;
+            who?: string;
+        };
+        /**
+         * @description The cloud daily payload (`GET {catalog_base}/api/snapshot/daily`), proxied to the desktop by
+         *     the daemon (best-effort, briefly cached). Empty when the cloud is unreachable — the desktop
+         *     then falls back to its local quote pack, so the heartbeat is a nicety, never a dependency.
+         */
+        DailySnapshotDto: {
+            bulletin?: null | components["schemas"]["MarketBulletinDto"];
+            indices?: components["schemas"]["MarketIndexDto"][];
+            quotes?: components["schemas"]["DailyQuoteDto"][];
+            snapshot_date?: string | null;
         };
         /** @description One flashcard deck with its review counts, read-only for the UI (Phase 3a, FR-13/14). */
         DeckDto: {
@@ -1215,7 +1382,6 @@ export interface components {
             author: string;
             message: string;
         };
-        /** @description Body for `POST /sessions/{id}/group` — a user message into a group chat (Phase 4c, FR-43). */
         GroupPostRequest: {
             content: string;
             /**
@@ -1254,6 +1420,15 @@ export interface components {
             /** @description Daemon crate version. */
             version: string;
         };
+        /** @description The seeded investing workspace (docs/11): the default project + the standing expert team. */
+        InvestingWorkspaceDto: {
+            /** @description The coordinator master slug (answers unaddressed messages). */
+            coordinator: string;
+            /** @description Member master slugs. */
+            members: string[];
+            project_id: string;
+            team_slug: string;
+        };
         /** @description A project's knowledge-index status + its indexed documents. */
         KnowledgeStatusDto: {
             /** Format: int64 */
@@ -1266,6 +1441,29 @@ export interface components {
              */
             last_indexed_at?: number | null;
             paths: components["schemas"]["DocumentDto"][];
+        };
+        /**
+         * @description The human-reviewed weekly bulletin (D13 「本周市场三件事」 — retrospective, market-wide, no
+         *     individual names). Only the latest published one is served.
+         */
+        MarketBulletinDto: {
+            body: string;
+            published_at?: string | null;
+            slug: string;
+            title: string;
+        };
+        /**
+         * @description One index in the cloud daily market cross-section (ADR-0017 — the market-wide snapshot the
+         *     cloud publishes once per trading day).
+         */
+        MarketIndexDto: {
+            /** Format: double */
+            change_pct?: number | null;
+            /** Format: double */
+            close?: number | null;
+            name: string;
+            symbol: string;
+            trade_date: string;
         };
         /** @description A Master: a persona-over-Skill role descriptor (Phase 4a, FR-39/46; ADR-0010/0013). */
         MasterDto: {
@@ -1342,6 +1540,51 @@ export interface components {
              */
             token_usage?: number | null;
         };
+        /** @description The deterministic portfolio overview (FinCalc — docs/11 M2). */
+        PortfolioDto: {
+            /**
+             * Format: double
+             * @description Herfindahl–Hirschman concentration over valued weights.
+             */
+            hhi?: number | null;
+            positions: components["schemas"]["PortfolioPositionDto"][];
+            /** Format: double */
+            top3_share?: number | null;
+            /** Format: double */
+            total_value?: number | null;
+            /**
+             * Format: int64
+             * @description Holdings that could not be valued (missing quantity or quote).
+             */
+            unvalued_count: number;
+        };
+        /**
+         * @description One valued holding in the portfolio overview (nullable everywhere — an unvalued position is
+         *     reported honestly, never estimated).
+         */
+        PortfolioPositionDto: {
+            /** Format: double */
+            close?: number | null;
+            /** Format: double */
+            cost?: number | null;
+            name: string;
+            /** Format: double */
+            quantity?: number | null;
+            source?: string | null;
+            stale: boolean;
+            symbol: string;
+            trade_date?: string | null;
+            /**
+             * Format: double
+             * @description `quantity × close` when both known.
+             */
+            value?: number | null;
+            /**
+             * Format: double
+             * @description Share of the valued total (0..1).
+             */
+            weight?: number | null;
+        };
         /** @description A project (context container, ADR-0011). */
         ProjectDto: {
             /** Format: int64 */
@@ -1386,6 +1629,32 @@ export interface components {
          */
         QuickChatRequest: {
             masters: string[];
+        };
+        /**
+         * @description A market quote with provenance (ADR-0017). `stale` = an old cached value served because a
+         *     refresh failed — the UI must render this honestly, never hide it.
+         */
+        QuoteDto: {
+            /** Format: double */
+            change_pct?: number | null;
+            /** Format: double */
+            close?: number | null;
+            /**
+             * Format: int64
+             * @description Epoch ms.
+             */
+            fetched_at: number;
+            name?: string | null;
+            /** Format: double */
+            prev_close?: number | null;
+            /** @description Adapter id, e.g. `eastmoney`. */
+            source: string;
+            stale: boolean;
+            symbol: string;
+            /** @description `YYYY-MM-DD` the quote is for. */
+            trade_date: string;
+            /** @description `"unverified"` | `"verified"` | `"disputed"`. */
+            validation: string;
         };
         /** @description One master ranked by the router against a brief. */
         RankedMasterDto: {
@@ -1660,6 +1929,14 @@ export interface components {
             summary: string;
             tags?: string[];
         };
+        /** @description Body for `POST /sessions/{id}/group` — a user message into a group chat (Phase 4c, FR-43). */
+        StartGroupSessionRequest: {
+            /**
+             * @description Optional session title (e.g. the first question, truncated) so the topic list is
+             *     recognizable; absent → the `group:<team>` default.
+             */
+            title?: string | null;
+        };
         /** @description A project's active adaptive study plan, read-only for the UI (Phase 3b, FR-15). */
         StudyPlanDto: {
             /** @description The agent-authored day-by-day plan (markdown). */
@@ -1805,6 +2082,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthDto"];
+                };
+            };
+        };
+    };
+    ensure_investing_workspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The (idempotently seeded) investing workspace */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvestingWorkspaceDto"];
                 };
             };
         };
@@ -2048,6 +2345,89 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectDto"];
+                };
+            };
+        };
+    };
+    list_project_assets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The project's tracked assets (newest interest first) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetDto"][];
+                };
+            };
+        };
+    };
+    untrack_project_asset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                id: string;
+                /** @description Canonical symbol (e.g. sh600519) */
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No longer watching */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not watching this symbol */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Lifecycle-guarded: the asset is a holding/sold ledger entry */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_project_briefings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Delivered proactive-touch briefings, newest first (silent NO_ALERT runs hidden) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingDto"][];
                 };
             };
         };
@@ -2479,6 +2859,54 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MemoryDto"][];
+                };
+            };
+        };
+    };
+    get_project_portfolio: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deterministic portfolio overview over recorded holdings (unvalued positions reported, never estimated) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioDto"];
+                };
+            };
+        };
+    };
+    list_project_quotes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                id: string;
+                /** @description Comma-separated symbols (canonical or common forms), capped at 30. */
+                symbols: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Latest EOD quotes with provenance; unavailable symbols are omitted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteDto"][];
                 };
             };
         };
@@ -2953,7 +3381,12 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        /** @description Optional topic title */
+        requestBody?: {
+            content: {
+                "application/json": null | components["schemas"]["StartGroupSessionRequest"];
+            };
+        };
         responses: {
             /** @description The new group session */
             200: {
@@ -3436,6 +3869,26 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    daily_snapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cloud daily payload (market cross-section + weekly bulletin + master quotes); empty when the cloud is unreachable */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DailySnapshotDto"];
+                };
             };
         };
     };

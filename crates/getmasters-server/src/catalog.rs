@@ -32,7 +32,8 @@ pub fn startup_sync_disabled() -> bool {
     std::env::var_os(NO_SYNC_ENV).is_some_and(|v| !v.is_empty())
 }
 
-fn catalog_base() -> String {
+/// The cloud base URL (shared by the catalog + daily-snapshot proxies).
+pub(crate) fn cloud_base() -> String {
     std::env::var(CATALOG_URL_ENV)
         .ok()
         .filter(|v| !v.trim().is_empty())
@@ -43,7 +44,7 @@ fn catalog_base() -> String {
 
 /// Fetch the current catalog from the cloud.
 pub async fn fetch_catalog() -> Result<CatalogDto, String> {
-    let url = format!("{}/api/catalog", catalog_base());
+    let url = format!("{}/api/catalog", cloud_base());
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()

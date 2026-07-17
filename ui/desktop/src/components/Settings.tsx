@@ -20,6 +20,7 @@ import {
 } from "../api/client";
 import { Badge, type BadgeProps, Button, IconButton, Input, Select } from "./ui";
 import { cn } from "./ui/cn";
+import { getLocale, setLocale, t } from "../lib/i18n";
 import { checkForUpdate, installUpdate } from "../lib/updater";
 
 type SectionKey = "model" | "keys" | "environment" | "email" | "about";
@@ -75,10 +76,12 @@ export function Settings({
   client,
   onClose,
   onRerunSetup,
+  onOpenLab,
 }: {
   client: MastersClient;
   onClose: () => void;
   onRerunSetup: () => void;
+  onOpenLab: () => void;
 }) {
   const [settings, setSettings] = useState<SettingsDto | null>(null);
   const [model, setModel] = useState("");
@@ -119,6 +122,37 @@ export function Settings({
             description="Used for new chats unless a master pins its own model. Prefix with a provider to route it, e.g. deepseek:deepseek-chat."
           >
             <Input value={model} onChange={(e) => setModel(e.target.value)} />
+          </SettingRow>
+        ),
+      },
+      {
+        section: "model" as const,
+        title: t("settings.language"),
+        keywords: "language locale chinese english 语言 中文",
+        node: (
+          <SettingRow title={t("settings.language")} description={t("settings.languageHint")}>
+            <Select
+              value={getLocale()}
+              onChange={(e) => {
+                setLocale(e.target.value as "zh" | "en");
+                location.reload();
+              }}
+            >
+              <option value="zh">中文</option>
+              <option value="en">English</option>
+            </Select>
+          </SettingRow>
+        ),
+      },
+      {
+        section: "model" as const,
+        title: t("lab.title"),
+        keywords: "lab workbench advanced chat projects masters 高级 工作台",
+        node: (
+          <SettingRow title={t("lab.title")} description={t("settings.labHint")}>
+            <Button variant="secondary" onClick={onOpenLab}>
+              {t("settings.openLab")}
+            </Button>
           </SettingRow>
         ),
       },
@@ -181,7 +215,7 @@ export function Settings({
       },
     ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings, model, client, onRerunSetup]);
+  }, [settings, model, client, onRerunSetup, onOpenLab]);
 
   if (!settings) return <div className="p-6 text-sm text-muted">Loading settings…</div>;
 

@@ -8,10 +8,13 @@
 //! It must compile and test with **no network and no Tauri**.
 
 pub mod agent;
+pub mod assets;
 pub mod config;
 pub mod error;
 pub mod extensions;
+pub mod fincalc;
 pub mod knowledge;
+pub mod market;
 pub mod masters;
 pub mod memory;
 pub mod permission;

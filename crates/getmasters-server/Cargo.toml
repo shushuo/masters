@@ -45,6 +45,7 @@ serde_json.workspace = true
 serde_yaml_ng = "0.10"
 # Cron parsing + next-fire math for the Scheduler (FR-17); server-only so the core stays cron-free.
 cron = "0.17"
+async-trait.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 # SMTP for outbound email delivery (FR-27); server-only. rustls (matches reqwest) to avoid a system
 # OpenSSL dep and stay headless-friendly. Blocking `SmtpTransport`, wrapped in spawn_blocking.

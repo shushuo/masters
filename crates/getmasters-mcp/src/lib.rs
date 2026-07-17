@@ -16,6 +16,9 @@ pub const BUILTIN_SERVERS: &[&str] = &[
     "study",
     "memory",
     "skills",
+    "assets",
+    "market",
+    "fincalc",
     "masters",
     "web",
 ];

@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Current state: Phase 0 + Phase 1 + Phase 2 (2a/2b/2c) + Phase 3a/3b (Study) + 3c (Recipes) + 3d (Scheduler) + 3e (Delivery) + 4a (Masters) + 4b (Teams + router) + 4c (Group chat) + 4d (External MCP) + 4e (Group streaming) + 4f (Multi-round) + 4g (Group tool visibility) + 4h (Portable bundles) + 4i (External ACP master agents) + Desktop UI (design system, full management UI, ACP selector, chat history, audit viewer, theme toggle, group max-rounds) + Masters sidebar (standalone/global masters + system templates + quick chat) + Hardening pass (loop robustness, i18n, event log, ACP gate) implemented
+## Current state: Phase 0 + Phase 1 + Phase 2 (2a/2b/2c) + Phase 3a/3b (Study) + 3c (Recipes) + 3d (Scheduler) + 3e (Delivery) + 4a (Masters) + 4b (Teams + router) + 4c (Group chat) + 4d (External MCP) + 4e (Group streaming) + 4f (Multi-round) + 4g (Group tool visibility) + 4h (Portable bundles) + 4i (External ACP master agents) + Desktop UI (design system, full management UI, ACP selector, chat history, audit viewer, theme toggle, group max-rounds) + Masters sidebar (standalone/global masters + system templates + quick chat) + Hardening pass (loop robustness, i18n, event log, ACP gate) + Investing vertical slice 1 (assets+market servers, expert-team pack, ask→track loop, Watch UI) + slice 2 (proactive touch: weekly digest + mover sentinel recipes w/ silent-pass, briefings feed) + slice 3 (earnings sentinel on cninfo disclosures) + slice 4 (progressive ledger + FinCalc portfolio unlock) + 《大师》UI/UX redesign (investing-first IA, paper-and-ink design language, 问大师 home) + cloud daily-heartbeat consumption (本周市场三件事 card + cloud quote pack) implemented
 
 **Phase 0 (Foundations)** and **Phase 1a** are in place (see `docs/08-roadmap.md` and
 `DEVELOPMENT.md`): a Rust Cargo workspace under `crates/` (`getmasters-proto`, `getmasters-core`,
@@ -280,7 +280,7 @@ Build/test with `cargo build --workspace` / `cargo test --workspace` (the latter
 getmasters-core's `testing` feature — the offline `MockProvider` fake — via the server's dev-dependency
 + Cargo feature unification; the `vec0` backend builds with `--features sqlite-vec`; PDF/DOCX extractor
 tests with `--features pdf,docx`; the lean-core gate is `cargo test -p getmasters-core --features
-testing`). The original tech-design package under `docs/` (incl. the thirteen
+testing`). The original tech-design package under `docs/` (incl. the eighteen
 ADRs) remains the authoritative spec.
 
 **Install/first-run (infra):** a GitHub Action (`.github/workflows/desktop-build.yml`) builds unsigned
@@ -399,6 +399,103 @@ the harness the speaker-labelled transcript; `session/update` tool calls map ont
 ToolCallStarted/ToolResult + the event log (4g visibility for ACP); runs are bounded by
 `GETMASTERS_ACP_TIMEOUT_SECS` (default 600s).
 
+**Investing vertical slice 1** (docs/11 MVP start; ADR-0015/0016/0017 implemented, 0018 deferred):
+the ask→track closed loop on the unchanged foundation. **Core** — migrations **0021** (`assets`
+lifecycle spine `watching→holding→sold` + first-interest snapshot; `positions`/`txns` schema'd for
+V1) and **0022** (`price_cache` with provenance: source/fetched_at/validation, global not
+project-scoped); two new Study-precedent built-ins: `getmasters-core::assets` (`AssetsServer` —
+`track_asset` Write = D8 silent-but-revocable under headless dispatch, `untrack_asset`
+lifecycle-guarded, `list_assets` Read) and `getmasters-core::market` (`MarketDataServer` —
+`get_quote`/`search_symbol` Read; one shared `MarketData::quote` cache-or-fetch path, 60min TTL,
+stale fallback flagged, explicit error over fabricated numbers). The upstream fetch is a
+**`MarketFetcher` trait injected from the server** (EmailTransport seam — core stays HTTP-free per
+ADR-0015's lean-core reading, see its implementation note); `FixtureFetcher`/`FailingFetcher` behind
+`testing`. `classify()` Read-arm gains `get_quote|search_symbol|list_assets` (narrow ruling,
+documented). **Server** — `market_fetch.rs` Eastmoney push2 adapter (pure parsers, canned-JSON
+tests, zero network in CI; Tencent = documented second-source slot); `AppState.market` +
+`with_market_fetcher`; `assets`/`market` in `ALL_BUILTIN_SERVERS`+`IMPLEMENTED_SERVERS` (FR-19
+free); `master_templates::investing()` — the 4-master pack (chief/analyst/risk/coach, stable ASCII
+slugs via the new `MasterStore::create_with_slug` seam, Chinese personas embedding the shared
+compliance block + research-card contract + D8 track mandate); `investing::ensure_workspace`
+(idempotent lazy seed: default project → global masters w/ catalog semantics → standing `investing`
+team → compliance instructions only-when-empty) behind `POST /investing/workspace`. **HTTP** —
+`GET /projects/{id}/assets`, `DELETE .../assets/{symbol}` (204/404/409 lifecycle guard),
+`GET .../quotes?symbols=` (batch-capped, per-symbol degrade) — same DeckDto flow, openapi+schema.ts
+regenerated in lock-step. **Desktop** — `Watch.tsx` (asset cards: watch reason, snapshot line,
+honest quote w/ ▲▼ + data-as-of + stale ⚠, untrack, empty-state bait questions, embedded GroupChat
+vs the standing team, fixed compliance footer); `src/lib/i18n.ts` (tiny typed dict, zh-first, new
+surfaces only); CJK font fallbacks on `--font-sans`; `--color-gain`/`--color-loss` tokens (CN
+red=gain, both theme blocks). Integration tests (`tests/investing.rs`, all offline) cover workspace
+idempotence + user-slug protection, the assets roundtrip, quote provenance + cache accounting, and
+the **D8 closed loop** (a group master calls `assets.track_asset` headlessly through the gate).
+**Slice 2 (proactive touch)** added the second touchpoint on the same machinery: two
+seeded touch recipes (`investing::touch_recipes` — `weekly-watch-digest` Sun 12:00 UTC and
+`watch-mover-sentinel` weekdays 07:30 UTC post-close Beijing, cron day-of-week uses names since
+the `cron` crate rejects `0`), seeded **only-when-absent** (user-edited recipes/schedules are
+never overwritten, unlike system masters) with `deliver_notify` on; the **silent-pass contract**
+(`investing::NO_ALERT` + `is_silent` — a run with nothing to say is recorded but not delivered
+and hidden from the feed: 超阈值才说话); `Store::list_project_runs` (runs⋈schedules) + `GET
+/projects/{id}/briefings` (`BriefingDto`, full body = the run session's final assistant message;
+ok + non-silent only) + a desktop `Briefings.tsx` feed (📰 nav, markdown cards, 就此提问 →
+embedded expert GroupChat). **Slice 3 (earnings sentinel)** completed the
+touch trio on the statutory channel (D11): migration **0023** `announcements` cache (global, provenance
+via `UNIQUE(source, ann_id)`), `MarketFetcher::recent_announcements` (default-Err so quote-only sources
+degrade) + `MarketData::announcements` (fetch-fresh daily, cache-window fallback, empty = honest), Read
+tool `market.list_announcements`, the cninfo adapter (`market_fetch.rs` — hand-rolled urlencoded POST,
+pure `parse_cninfo_announcements` on canned JSON) and the seeded `earnings-sentinel` recipe (定期报告
+title filter, silent-pass, weekdays 13:30 UTC = 21:30 Beijing post-disclosure-wave).
+**Slice 4 (progressive ledger + portfolio, B4+B5)** opened ADR-0016's holding state: gated Write tools
+`assets.record_position`/`record_txn` (conversation-confirmed, partial fields normal — COALESCE upsert
+on one `positions` row per asset; a buy transitions watching→holding), `Store::{set_asset_state,
+upsert_position,insert_txn,holdings}`; **`getmasters-core::fincalc`** (NFR-INV-1: the LLM never
+mental-maths money) — pure `hhi`/`top_n_share` + `overview` (value = quantity×close only when both
+known, else honestly unvalued; provenance carried), hosted as the **FinCalcServer** built-in
+(`portfolio_overview` Read; hosted with `market` behind the injected fetcher), `GET
+/projects/{id}/portfolio` (`PortfolioDto`), the Watch-page portfolio strip (unlocks once a holding
+exists), and the 配置规划师 `allocation` master joining the standing team (roster now
+chief/analyst/risk/allocation/coach; coach carries the record-after-confirm 轻提议 mandate).
+**《大师》UI/UX redesign** (docs/12-ux-redesign.md — the now-authoritative UI/UX spec; docs/10
+records the generic-shell era): the desktop is **investing-first end-to-end**. IA = the user's
+nouns — 问大师 `#/ask` (home; the standing expert-team group chat with a sidebar topic list) /
+关注 `#/watch` / 动静 `#/briefings` / 设置; the generic surfaces (single-agent Chat, Projects,
+MastersHub) live on under 高级工作台 `#/lab/...` (`Lab.tsx` thin shell; legacy `#/chat`/
+`#/projects`/`#/masters` deep links parse into lab sub-routes). Visual language = 新中式极简
+宣纸与墨 tokens (warm paper surfaces, ink text, 黛青 accent; gain/loss CN convention kept) + a
+serif CJK `--font-display` (system stack) + a seal-style 「大」 wordmark (panda retired, D12) —
+all in `index.css`/`Brand.tsx`. 问大师: `AskHome.tsx` wraps a generalized `GroupChat.tsx`
+(resume via new `sessionId` prop + `listMessages` replay; roster identity `lib/masters.ts`
+slug→中文名+色 avatars; empty state = 大师一句 `lib/quotes.ts` daily quote + bait questions;
+compliance footer above the composer). Topics are recognizable via one small additive backend
+seam: `POST /projects/{id}/teams/{slug}/session` now accepts an optional
+`StartGroupSessionRequest{title}` (first question, truncated). Watch = lifecycle sections
+(持有 w/ portfolio strip + valued position cards, 关注中 w/ reason-led cards) + per-card
+就此提问 → ask prefill (App-level `askDraft`); Briefings = day-grouped timeline w/ type badges +
+the calm positive quiet state + an unread nav dot (localStorage seen-mark). zh-first i18n across
+all redesigned surfaces (default locale zh; Settings gains 语言 + workbench rows); Onboarding
+carries the three promises (数字有来源/数据留本机/不荐股). Verified headless via Playwright
+walkthrough (onboarding/ask/watch/briefings/lab redirect, light+dark). A follow-up **visual
+retune** (finance no-green rule + Cowork-informed style) replaced the greenish 黛青 accent with
+warm coral (`#c2593f`/dark `#e08b6d`), turned success/info blue (the ONLY green left is the
+market loss color), dropped the serif entirely (`--font-display` = sans), made buttons/badges
+pill-shaped (`rounded-full`, radius 8/12/16), floated the sidebar (`m-2 rounded-lg shadow-sm`),
+and recolored the chief avatar to coral (docs/12 §5 rewritten accordingly).
+**Cloud daily-heartbeat consumption (D13; ADR-0017 cloud half wired to the desktop):** the
+daemon proxies the cloud's `GET {GETMASTERS_CATALOG_URL|getmasters.app}/api/snapshot/daily`
+(market cross-section + human-reviewed weekly bulletin + 大师一句 quote pack) at loopback `GET
+/snapshot/daily` — `getmasters-server::snapshot` (pure `map_cloud` over the cloud wire shape +
+`fetch_daily`, reusing `catalog::cloud_base()`), briefly cached in `AppState::daily_snapshot()`,
+**best-effort** (empty payload on cloud failure → the UI falls back to the local quote pack, never
+a 5xx). Proto `DailySnapshotDto`/`MarketIndexDto`/`MarketBulletinDto`/`DailyQuoteDto`
+(all `#[serde(default)]`). Desktop: `AskHome.tsx` fetches it and the 问大师 empty state gains the
+D13 **「本周市场三件事」 card** (index strip w/ ▲▼ + 数据截至 + the weekly bulletin markdown) when a
+bulletin is published, plus a cloud-sourced 大师一句 (local `quotes.ts` remains the offline
+fallback). Integration test: the endpoint degrades to an empty payload when the cloud is
+unreachable; unit tests cover `map_cloud`. The masters-cloud side (snapshot job + bulletin/quote
+tables + `/api/snapshot/daily`) shipped in the cloud repo's C1–C4.
+**Deferred within the vertical:** unread state on briefings, JournalServer,
+sell/close flows + coached quarterly reviews (hypothetical returns live only there, D10), redaction
+mode, dual-source validation, screenshot ingestion (ADR-0018).
+
 **Deferred to Phase 3 (later slices) and Phase 4:** the per-session **audit-log viewer** (`GET
 /sessions/{id}/audit`) and **group `max_rounds` over the WS stream** have since landed in the Desktop
 UI layer above; still-deferred **group-chat extensions** beyond the 4c/4e/4f/4g slices
@@ -416,8 +513,8 @@ masters); OCR for image PDFs; vector recall
 for memory/skills; an
 always-on background scheduler/delivery service (FR-27 messaging gateways + inbound are ADR-0009 non-goals).
 The agent loop and prompt assembler mark the seams. When implementing further, follow the roadmap
-and the ADRs rather than improvising stack choices — the fourteen foundational decisions are already
-settled (see below).
+and the ADRs rather than improvising stack choices — the eighteen foundational decisions are already
+settled (see below; 0015–0018 are the design-only investing-vertical decisions, not yet implemented).
 
 > **Note on `src-tauri`:** `ui/desktop/src-tauri` is deliberately excluded from the Cargo
 > workspace so `cargo build --workspace` stays green in headless CI (Tauri needs webkit + a
@@ -447,7 +544,9 @@ The docs are numbered and meant to be read in order; later docs depend on earlie
 - `docs/08-roadmap.md` — phased plan (Phase 0 → 4) and how features map to phases
 - `docs/09-projects-masters.md` — Project as a context container + Masters (persona-over-Skill) + Master Teams
 - `docs/10-ui-design.md` — desktop UI design system as implemented (tokens/layout/components/interaction) + Manus/Claude-Cowork benchmark + prioritized enhancement plan
-- `docs/adr/0001..0014` — the binding decisions; treat these as authoritative (0006–0009 are the Hermes-informed refinements; 0010–0012 are the WorkBuddy-informed Project/Master-Team additions, 0012 = the multi-master group-chat communication model; 0013 = per-master model selection; 0014 = external ACP master agents)
+- `docs/11-investment-agent.md` — the investing-vertical product positioning & design (《大师》 pivot; 13 settled product decisions D1–D13; design-only, not yet implemented)
+- `docs/12-ux-redesign.md` — the 《大师》 desktop UI/UX redesign (authoritative: principles/IA/screens/tokens/brand; supersedes docs/10)
+- `docs/adr/0001..0018` — the binding decisions; treat these as authoritative (0006–0009 are the Hermes-informed refinements; 0010–0012 are the WorkBuddy-informed Project/Master-Team additions, 0012 = the multi-master group-chat communication model; 0013 = per-master model selection; 0014 = external ACP master agents; 0015–0018 = the investing-vertical decisions from docs/11 — domain packs, asset lifecycle, market-data supply, provider vision)
 
 Diagrams are **mermaid** embedded in markdown.
 
@@ -469,6 +568,10 @@ Diagrams are **mermaid** embedded in markdown.
 | 0012 | **Multi-master conversation** = single-user group chat; @-mention addressing (one/many/`@all`, unaddressed → coordinator master); shared author-attributed transcript (assembled per 0007); bounded turn-taking (no ad-hoc master↔master auto-reply); declarative master workflows; **"shared read context, isolated gated execution"** |
 | 0013 | **Per-master model** = each master runs on its own **provider-qualified** `default_model` (any configured provider — Claude tiers/OpenAI/Ollama) via the `Provider` trait; **persona-fixed** (no runtime override); **per-master privacy boundary** (local-model masters stay on-device); fallback to default provider |
 | 0014 | **External ACP master agents** = a coding-harness *backend* on the file-backed `Master` (`backend: acp`); Masters is the **ACP client** driving a pre-installed CLI (Claude Code/Codex/OpenCode/Gemini) over stdio; its **fs/permission callbacks route through the gate** (ADR-0008); inherits env + configured `acp_env` (trusted local agent, not env-stripped like MCP connectors); coding harnesses only |
+| 0015 | **Vertical domain packs** (investing pivot, docs/11) = verticalization is **four layers on the unchanged foundation**: domain data/compute as built-in gated MCP servers (Study precedent) + content packs via catalog sync + vertical UI; core crates stay domain-free; compliance lives in content + fixed UI; the pattern is the template for future verticals |
+| 0016 | **Asset lifecycle storage** = one `assets` spine (`watching→holding→sold`) behind a gated `AssetsServer` — watchlist and ledger are states, not features; **silent-but-revocable** tracking with point-in-time snapshots; holdings + risk profile accumulate **progressively from conversation** (no upfront demands); details never leave device (redaction mode for cloud contexts); hypothetical returns only in coached quarterly reviews |
+| 0017 | **Market data supply** = hybrid: per-asset **EOD** data fetched **client-direct** from public channels (disclosure-first sourcing; adapters are catalog-hot-updated content; dual-source cross-validation with provenance, disputed → explicit ⚠ degrade) + market-wide cross-sections as one daily **cloud static-JSON snapshot** on CDN (carries the human-reviewed weekly bulletin) + cloud proxy as fallback only; **no realtime/intraday, no commercial redistribution licensing at this stage** |
+| 0018 | **Provider vision** (deferred to P2) = image input enters through the `Provider` trait (capability-flagged; local-VLM route preserves the ADR-0013 privacy boundary) for **screenshot holdings extraction**: proposal → user-confirmed diff preview → gated AssetsServer writes; screenshots never persisted; **no chart reading** (compliance boundary) |
 
 Cross-cutting invariants the design depends on:
 - Every side-effecting tool call routes through **Permission & Audit** before execution — adding a tool must

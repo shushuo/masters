@@ -8,7 +8,7 @@ export type IconButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const base =
-  "inline-flex items-center justify-center rounded-sm p-1.5 transition-colors " +
+  "inline-flex items-center justify-center rounded-full p-1.5 transition-colors " +
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent " +
   "disabled:opacity-50 disabled:pointer-events-none";
 
