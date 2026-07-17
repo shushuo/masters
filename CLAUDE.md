@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Current state: Phase 0 + Phase 1 + Phase 2 (2a/2b/2c) + Phase 3a/3b (Study) + 3c (Recipes) + 3d (Scheduler) + 3e (Delivery) + 4a (Masters) + 4b (Teams + router) + 4c (Group chat) + 4d (External MCP) + 4e (Group streaming) + 4f (Multi-round) + 4g (Group tool visibility) + 4h (Portable bundles) + 4i (External ACP master agents) + Desktop UI (design system, full management UI, ACP selector, chat history, audit viewer, theme toggle, group max-rounds) + Masters sidebar (standalone/global masters + system templates + quick chat) + Hardening pass (loop robustness, i18n, event log, ACP gate) + Investing vertical slice 1 (assets+market servers, expert-team pack, ask→track loop, Watch UI) + slice 2 (proactive touch: weekly digest + mover sentinel recipes w/ silent-pass, briefings feed) + slice 3 (earnings sentinel on cninfo disclosures) + slice 4 (progressive ledger + FinCalc portfolio unlock) + 《大师》UI/UX redesign (investing-first IA, paper-and-ink design language, 问大师 home) implemented
+## Current state: Phase 0 + Phase 1 + Phase 2 (2a/2b/2c) + Phase 3a/3b (Study) + 3c (Recipes) + 3d (Scheduler) + 3e (Delivery) + 4a (Masters) + 4b (Teams + router) + 4c (Group chat) + 4d (External MCP) + 4e (Group streaming) + 4f (Multi-round) + 4g (Group tool visibility) + 4h (Portable bundles) + 4i (External ACP master agents) + Desktop UI (design system, full management UI, ACP selector, chat history, audit viewer, theme toggle, group max-rounds) + Masters sidebar (standalone/global masters + system templates + quick chat) + Hardening pass (loop robustness, i18n, event log, ACP gate) + Investing vertical slice 1 (assets+market servers, expert-team pack, ask→track loop, Watch UI) + slice 2 (proactive touch: weekly digest + mover sentinel recipes w/ silent-pass, briefings feed) + slice 3 (earnings sentinel on cninfo disclosures) + slice 4 (progressive ledger + FinCalc portfolio unlock) + 《大师》UI/UX redesign (investing-first IA, paper-and-ink design language, 问大师 home) + cloud daily-heartbeat consumption (本周市场三件事 card + cloud quote pack) implemented
 
 **Phase 0 (Foundations)** and **Phase 1a** are in place (see `docs/08-roadmap.md` and
 `DEVELOPMENT.md`): a Rust Cargo workspace under `crates/` (`getmasters-proto`, `getmasters-core`,
@@ -479,8 +479,20 @@ warm coral (`#c2593f`/dark `#e08b6d`), turned success/info blue (the ONLY green 
 market loss color), dropped the serif entirely (`--font-display` = sans), made buttons/badges
 pill-shaped (`rounded-full`, radius 8/12/16), floated the sidebar (`m-2 rounded-lg shadow-sm`),
 and recolored the chief avatar to coral (docs/12 §5 rewritten accordingly).
-**Deferred within the vertical:** the cloud cross-section snapshot
-+ weekly bulletin + daily master-quote pack, unread state on briefings, JournalServer,
+**Cloud daily-heartbeat consumption (D13; ADR-0017 cloud half wired to the desktop):** the
+daemon proxies the cloud's `GET {GETMASTERS_CATALOG_URL|getmasters.app}/api/snapshot/daily`
+(market cross-section + human-reviewed weekly bulletin + 大师一句 quote pack) at loopback `GET
+/snapshot/daily` — `getmasters-server::snapshot` (pure `map_cloud` over the cloud wire shape +
+`fetch_daily`, reusing `catalog::cloud_base()`), briefly cached in `AppState::daily_snapshot()`,
+**best-effort** (empty payload on cloud failure → the UI falls back to the local quote pack, never
+a 5xx). Proto `DailySnapshotDto`/`MarketIndexDto`/`MarketBulletinDto`/`DailyQuoteDto`
+(all `#[serde(default)]`). Desktop: `AskHome.tsx` fetches it and the 问大师 empty state gains the
+D13 **「本周市场三件事」 card** (index strip w/ ▲▼ + 数据截至 + the weekly bulletin markdown) when a
+bulletin is published, plus a cloud-sourced 大师一句 (local `quotes.ts` remains the offline
+fallback). Integration test: the endpoint degrades to an empty payload when the cloud is
+unreachable; unit tests cover `map_cloud`. The masters-cloud side (snapshot job + bulletin/quote
+tables + `/api/snapshot/daily`) shipped in the cloud repo's C1–C4.
+**Deferred within the vertical:** unread state on briefings, JournalServer,
 sell/close flows + coached quarterly reviews (hypothetical returns live only there, D10), redaction
 mode, dual-source validation, screenshot ingestion (ADR-0018).
 

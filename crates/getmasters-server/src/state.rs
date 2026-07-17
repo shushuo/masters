@@ -73,6 +73,8 @@ pub struct AppState {
     /// Market-data upstream adapter (investing vertical, ADR-0017). The live daemon uses the
     /// Eastmoney adapter; tests inject the core `FixtureFetcher`.
     pub market: Arc<dyn getmasters_core::market::MarketFetcher>,
+    /// Briefly-cached cloud daily snapshot (D13 heartbeat proxy; `(fetched_ms, payload)`).
+    snapshot_cache: Arc<Mutex<Option<(i64, getmasters_proto::DailySnapshotDto)>>>,
     /// Lazily-built, per-project agents (files + knowledge enabled), keyed by project id.
     session_agents: Arc<Mutex<HashMap<String, AgentService>>>,
 }
@@ -89,7 +91,32 @@ impl AppState {
             cfg: Config::default(),
             email: crate::delivery::default_transport(),
             market: crate::market_fetch::default_fetcher(),
+            snapshot_cache: Arc::new(Mutex::new(None)),
             session_agents: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    /// The cloud daily snapshot (D13 heartbeat), briefly cached. **Best-effort**: on a fetch
+    /// failure it serves an empty payload so the desktop falls back to its local quote pack.
+    pub async fn daily_snapshot(&self) -> getmasters_proto::DailySnapshotDto {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        if let Some((at, cached)) = self.snapshot_cache.lock().unwrap().clone() {
+            if now - at < crate::snapshot::CACHE_TTL_MS {
+                return cached;
+            }
+        }
+        match crate::snapshot::fetch_daily().await {
+            Ok(payload) => {
+                *self.snapshot_cache.lock().unwrap() = Some((now, payload.clone()));
+                payload
+            }
+            Err(e) => {
+                tracing::debug!(error = %e, "daily snapshot fetch failed; serving empty");
+                getmasters_proto::DailySnapshotDto::default()
+            }
         }
     }
 

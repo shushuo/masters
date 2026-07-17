@@ -16,6 +16,7 @@ pub mod schedules;
 pub mod sessions;
 pub mod settings;
 pub mod skills_global;
+pub mod snapshot;
 pub mod teams;
 pub mod ws;
 

@@ -30,6 +30,7 @@ const dict = {
   "ask.rounds.n": { zh: "轮", en: "round(s)" },
   "ask.loading": { zh: "正在唤醒守护…", en: "Waking the guardian…" },
   "ask.coordinatorHint": { zh: "不@任何人时由首席顾问回答", en: "Unaddressed questions go to the coordinator" },
+  "ask.weekly": { zh: "本周市场三件事", en: "This week in the market" },
   "ask.error": { zh: "出错了：", en: "Something went wrong: " },
   // --- lab (advanced workbench) ---
   "lab.title": { zh: "高级工作台", en: "Advanced workbench" },

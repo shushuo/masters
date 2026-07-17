@@ -865,6 +865,53 @@ pub struct BriefingDto {
     pub body: String,
 }
 
+/// One index in the cloud daily market cross-section (ADR-0017 — the market-wide snapshot the
+/// cloud publishes once per trading day).
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct MarketIndexDto {
+    pub symbol: String,
+    pub name: String,
+    #[serde(default)]
+    pub close: Option<f64>,
+    #[serde(default)]
+    pub change_pct: Option<f64>,
+    pub trade_date: String,
+}
+
+/// The human-reviewed weekly bulletin (D13 「本周市场三件事」 — retrospective, market-wide, no
+/// individual names). Only the latest published one is served.
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct MarketBulletinDto {
+    pub slug: String,
+    pub title: String,
+    pub body: String,
+    #[serde(default)]
+    pub published_at: Option<String>,
+}
+
+/// One 大师一句 quote from the cloud pack (D13 daily heartbeat).
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct DailyQuoteDto {
+    pub text: String,
+    #[serde(default)]
+    pub who: String,
+}
+
+/// The cloud daily payload (`GET {catalog_base}/api/snapshot/daily`), proxied to the desktop by
+/// the daemon (best-effort, briefly cached). Empty when the cloud is unreachable — the desktop
+/// then falls back to its local quote pack, so the heartbeat is a nicety, never a dependency.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, ToSchema)]
+pub struct DailySnapshotDto {
+    #[serde(default)]
+    pub snapshot_date: Option<String>,
+    #[serde(default)]
+    pub indices: Vec<MarketIndexDto>,
+    #[serde(default)]
+    pub bulletin: Option<MarketBulletinDto>,
+    #[serde(default)]
+    pub quotes: Vec<DailyQuoteDto>,
+}
+
 /// One valued holding in the portfolio overview (nullable everywhere — an unvalued position is
 /// reported honestly, never estimated).
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]

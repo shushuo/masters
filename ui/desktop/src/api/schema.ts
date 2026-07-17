@@ -964,6 +964,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/snapshot/daily": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["daily_snapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1177,6 +1193,22 @@ export interface components {
             members?: string[];
             name: string;
             summary?: string;
+        };
+        /** @description One 大师一句 quote from the cloud pack (D13 daily heartbeat). */
+        DailyQuoteDto: {
+            text: string;
+            who?: string;
+        };
+        /**
+         * @description The cloud daily payload (`GET {catalog_base}/api/snapshot/daily`), proxied to the desktop by
+         *     the daemon (best-effort, briefly cached). Empty when the cloud is unreachable — the desktop
+         *     then falls back to its local quote pack, so the heartbeat is a nicety, never a dependency.
+         */
+        DailySnapshotDto: {
+            bulletin?: null | components["schemas"]["MarketBulletinDto"];
+            indices?: components["schemas"]["MarketIndexDto"][];
+            quotes?: components["schemas"]["DailyQuoteDto"][];
+            snapshot_date?: string | null;
         };
         /** @description One flashcard deck with its review counts, read-only for the UI (Phase 3a, FR-13/14). */
         DeckDto: {
@@ -1409,6 +1441,29 @@ export interface components {
              */
             last_indexed_at?: number | null;
             paths: components["schemas"]["DocumentDto"][];
+        };
+        /**
+         * @description The human-reviewed weekly bulletin (D13 「本周市场三件事」 — retrospective, market-wide, no
+         *     individual names). Only the latest published one is served.
+         */
+        MarketBulletinDto: {
+            body: string;
+            published_at?: string | null;
+            slug: string;
+            title: string;
+        };
+        /**
+         * @description One index in the cloud daily market cross-section (ADR-0017 — the market-wide snapshot the
+         *     cloud publishes once per trading day).
+         */
+        MarketIndexDto: {
+            /** Format: double */
+            change_pct?: number | null;
+            /** Format: double */
+            close?: number | null;
+            name: string;
+            symbol: string;
+            trade_date: string;
         };
         /** @description A Master: a persona-over-Skill role descriptor (Phase 4a, FR-39/46; ADR-0010/0013). */
         MasterDto: {
@@ -3814,6 +3869,26 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    daily_snapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cloud daily payload (market cross-section + weekly bulletin + master quotes); empty when the cloud is unreachable */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DailySnapshotDto"];
+                };
             };
         };
     };

@@ -471,3 +471,32 @@ async fn portfolio_endpoint_values_recorded_holdings_honestly() {
         .unwrap();
     assert_eq!(res.status(), 409);
 }
+
+/// C5 (ADR-0017 cloud half): the daemon proxies the cloud daily heartbeat. With the cloud
+/// pointed at an unreachable base, the endpoint degrades to an empty payload (best-effort) —
+/// never a 5xx — so the desktop's empty state just falls back to its local quote pack.
+#[tokio::test]
+async fn daily_snapshot_degrades_to_empty_when_cloud_unreachable() {
+    // Point the cloud base at a closed port so the fetch fails fast.
+    std::env::set_var("GETMASTERS_CATALOG_URL", "http://127.0.0.1:1");
+    let dir = temp_dir();
+    let store = Store::open_in_memory().unwrap();
+    let fetcher = Arc::new(FixtureFetcher::single("sh600519", "贵州茅台", 1700.0));
+    let state = state_with(&store, &dir, fetcher);
+    let base = serve(state).await;
+    let client = reqwest::Client::new();
+
+    let res = client
+        .get(format!("{base}/snapshot/daily"))
+        .bearer_auth(TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "best-effort: always 200");
+    let body: getmasters_proto::DailySnapshotDto = res.json().await.unwrap();
+    assert!(body.snapshot_date.is_none());
+    assert!(body.bulletin.is_none());
+    assert!(body.quotes.is_empty());
+    assert!(body.indices.is_empty());
+    std::env::remove_var("GETMASTERS_CATALOG_URL");
+}

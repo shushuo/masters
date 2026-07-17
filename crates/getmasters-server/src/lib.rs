@@ -20,6 +20,7 @@ pub mod openapi;
 pub mod recipe;
 pub mod routes;
 pub mod scheduler;
+pub mod snapshot;
 pub mod state;
 pub mod team;
 
@@ -85,6 +86,7 @@ pub fn build_app(state: AppState) -> Router {
             "/projects/{id}/portfolio",
             get(routes::investing::get_portfolio),
         )
+        .route("/snapshot/daily", get(routes::snapshot::daily))
         .route(
             "/projects/{id}/study-plan",
             get(routes::projects::study_plan),

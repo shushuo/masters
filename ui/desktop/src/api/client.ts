@@ -52,6 +52,7 @@ export type ExtensionDto = components["schemas"]["ExtensionDto"];
 export type KnowledgeStatusDto = components["schemas"]["KnowledgeStatusDto"];
 export type AssetDto = components["schemas"]["AssetDto"];
 export type PortfolioDto = components["schemas"]["PortfolioDto"];
+export type DailySnapshotDto = components["schemas"]["DailySnapshotDto"];
 export type QuoteDto = components["schemas"]["QuoteDto"];
 export type InvestingWorkspaceDto = components["schemas"]["InvestingWorkspaceDto"];
 export type BriefingDto = components["schemas"]["BriefingDto"];
@@ -307,6 +308,14 @@ export class MastersClient {
       headers: this.headers(),
     });
     if (!res.ok) throw new Error(`getPortfolio failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** The cloud daily heartbeat (D13): market cross-section + weekly bulletin + master quotes.
+   * Best-effort — the daemon returns an empty payload when the cloud is unreachable. */
+  async getDailySnapshot(): Promise<DailySnapshotDto> {
+    const res = await fetch(`${this.base()}/snapshot/daily`, { headers: this.headers() });
+    if (!res.ok) throw new Error(`getDailySnapshot failed: ${res.status}`);
     return res.json();
   }
 
