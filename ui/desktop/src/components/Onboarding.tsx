@@ -92,7 +92,7 @@ export function Onboarding({ client, onDone }: { client: MastersClient; onDone: 
     <div className="flex h-full items-center justify-center p-4">
       <div className="w-full max-w-md rounded-lg border border-border bg-surface p-6 text-sm shadow">
         <div className="mb-4 flex flex-col items-center text-center">
-          <PandaMark className="size-14 text-3xl" />
+          <PandaMark className="size-14" />
           <h2 className="mt-3 font-display text-xl font-semibold">欢迎来到「大师」</h2>
         </div>
         {step === 1 && (
