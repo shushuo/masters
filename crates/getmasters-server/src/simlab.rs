@@ -181,6 +181,9 @@ struct Applied {
 
 /// Run one decision round of a simulation. Concurrency-guarded (a manual click and a scheduler tick
 /// can't run the same sim twice). Returns the round result (leaderboard + per-master decisions).
+/// Used by the scheduler (which awaits the result for its digest); the HTTP path claims separately
+/// and runs [`run_round_claimed`] in the background so a slow multi-master round never blocks the
+/// request.
 pub async fn run_round(state: &AppState, sim_id: &str) -> Result<SimRoundResultDto, String> {
     let store = state.agent.store().clone();
     let sim = store
@@ -193,13 +196,24 @@ pub async fn run_round(state: &AppState, sim_id: &str) -> Result<SimRoundResultD
     if !store.claim_simulation(sim_id).map_err(|e| e.to_string())? {
         return Err("该模拟盘正在运行本轮，请稍候".into());
     }
+    run_round_claimed(state, sim).await
+}
+
+/// Run a round for an **already-claimed** simulation (state == `running`), releasing state
+/// afterward (→ `active` on error, round advanced on success). The HTTP handler claims then spawns
+/// this on a task; `run_round` calls it after claiming inline.
+pub async fn run_round_claimed(
+    state: &AppState,
+    sim: SimulationRow,
+) -> Result<SimRoundResultDto, String> {
+    let store = state.agent.store().clone();
     let outcome = run_round_inner(state, &store, &sim).await;
     match &outcome {
         Ok((round_no, _)) => {
-            let _ = store.finish_simulation_round(sim_id, *round_no);
+            let _ = store.finish_simulation_round(&sim.id, *round_no);
         }
         Err(_) => {
-            let _ = store.set_simulation_state(sim_id, "active");
+            let _ = store.set_simulation_state(&sim.id, "active");
         }
     }
     outcome.map(|(_, result)| result)

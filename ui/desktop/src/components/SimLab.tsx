@@ -212,6 +212,7 @@ function CreateForm({
   const [benchmark, setBenchmark] = useState("sh000300");
   const [longOnly, setLongOnly] = useState(true);
   const [maxWeight, setMaxWeight] = useState("");
+  const [cashFloor, setCashFloor] = useState("");
   const [feeBps, setFeeBps] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
 
@@ -243,8 +244,8 @@ function CreateForm({
         long_only: longOnly,
         benchmark: benchmark.trim() || undefined,
         max_weight: maxWeight ? Number(maxWeight) / 100 : undefined,
+        cash_floor: cashFloor ? Number(cashFloor) / 100 : undefined,
         fee_bps: feeBps ? Number(feeBps) : undefined,
-        cash_floor: undefined,
       },
     };
     onCreate(body);
@@ -276,7 +277,7 @@ function CreateForm({
         <span className="mb-1 block text-muted">{L("股票池（逗号分隔的代码）", "Universe (comma-separated codes)")}</span>
         <Input value={universe} onChange={(e) => setUniverse(e.target.value)} placeholder="600519, 000001, 300750" />
       </label>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm">
           <span className="mb-1 block text-muted">{L("基准（可选）", "Benchmark (optional)")}</span>
           <Input value={benchmark} onChange={(e) => setBenchmark(e.target.value)} placeholder="sh000300" />
@@ -284,6 +285,10 @@ function CreateForm({
         <label className="text-sm">
           <span className="mb-1 block text-muted">{L("单标的上限 %（可选）", "Max weight % (optional)")}</span>
           <Input type="number" value={maxWeight} onChange={(e) => setMaxWeight(e.target.value)} placeholder="40" />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-muted">{L("现金下限 %（可选）", "Cash floor % (optional)")}</span>
+          <Input type="number" value={cashFloor} onChange={(e) => setCashFloor(e.target.value)} placeholder="0" />
         </label>
         <label className="text-sm">
           <span className="mb-1 block text-muted">{L("交易费 bp（可选）", "Fee bps (optional)")}</span>
@@ -402,16 +407,34 @@ export default function SimLab({
 
   const runRound = async () => {
     if (!projectId || !selected) return;
+    const sid = selected.id;
     setRunning(true);
     setError(null);
     try {
-      await client.runSimulationRound(projectId, selected.id);
-      await openDetail(selected.id);
+      // The round runs in the background (202); poll the sim until it settles from "running".
+      await client.runSimulationRound(projectId, sid);
+      for (let i = 0; i < 240; i++) {
+        const sim = await client.getSimulation(projectId, sid);
+        if (sim.state !== "running") break;
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      await openDetail(sid);
       await loadList(projectId);
     } catch (e) {
       setError(String(e));
     } finally {
       setRunning(false);
+    }
+  };
+
+  const changeState = async (s: "active" | "paused" | "ended") => {
+    if (!projectId || !selected) return;
+    try {
+      const sim = await client.setSimulationState(projectId, selected.id, s);
+      setSelected(sim);
+      await loadList(projectId);
+    } catch (e) {
+      setError(String(e));
     }
   };
 
@@ -481,7 +504,11 @@ export default function SimLab({
               {/* Detail header */}
               <div className="flex items-start justify-between">
                 <div>
-                  <h2 className="font-display text-xl">{selected.name}</h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className="font-display text-xl">{selected.name}</h2>
+                    {selected.state === "paused" && <Badge>{L("已暂停", "Paused")}</Badge>}
+                    {selected.state === "ended" && <Badge>{L("已结束", "Ended")}</Badge>}
+                  </div>
                   {selected.scenario && <p className="text-sm text-muted">{selected.scenario}</p>}
                   <p className="mt-1 text-xs text-faint">
                     {L("已进行", "Rounds")} {selected.round_no} · {L("初始资金", "start")} {money(selected.starting_cash)} ·{" "}
@@ -495,10 +522,27 @@ export default function SimLab({
 
               {/* Controls */}
               <div className="flex flex-wrap items-center gap-3">
-                <Button onClick={runRound} disabled={running}>
+                <Button
+                  onClick={runRound}
+                  disabled={running || selected.state === "paused" || selected.state === "ended"}
+                >
                   <Play className="h-4 w-4" />
                   {running ? L("运行中…", "Running…") : L("运行一轮", "Run a round")}
                 </Button>
+                {selected.state !== "ended" && (
+                  <Button
+                    variant="ghost"
+                    disabled={running}
+                    onClick={() => changeState(selected.state === "paused" ? "active" : "paused")}
+                  >
+                    {selected.state === "paused" ? L("继续", "Resume") : L("暂停", "Pause")}
+                  </Button>
+                )}
+                {selected.state !== "ended" && (
+                  <Button variant="ghost" disabled={running} onClick={() => changeState("ended")}>
+                    {L("结束", "End")}
+                  </Button>
+                )}
                 <label className="flex items-center gap-2 text-sm text-muted">
                   {L("定时", "Schedule")}
                   <select

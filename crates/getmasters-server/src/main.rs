@@ -73,6 +73,13 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // Recover simulations stuck in `running` (a daemon restart mid-round; 模拟投资实验室).
+    if let Ok(n) = store.reset_running_simulations() {
+        if n > 0 {
+            tracing::info!(count = n, "reset simulations stuck mid-round to active");
+        }
+    }
+
     let agent = AgentService::new(store, provider, cfg.model.clone())
         .with_limits(getmasters_core::agent::RunLimits::from_env())
         .with_approval_registry(Arc::new(ApprovalRegistry::new()));

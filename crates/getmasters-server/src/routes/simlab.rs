@@ -8,8 +8,7 @@ use axum::http::StatusCode;
 use axum::Json;
 
 use getmasters_proto::{
-    CreateSimulationRequest, SetSimScheduleRequest, SimLeaderboardRowDto, SimRoundDto,
-    SimRoundResultDto, SimulationDto,
+    CreateSimulationRequest, SetSimScheduleRequest, SimLeaderboardRowDto, SimRoundDto, SimulationDto,
 };
 
 use getmasters_core::simlab::BENCHMARK_SLUG;
@@ -194,7 +193,8 @@ pub async fn delete(
         ("sid" = String, Path, description = "Simulation id")
     ),
     responses(
-        (status = 200, description = "The round result (leaderboard + per-master decisions)", body = SimRoundResultDto),
+        (status = 202, description = "Round started in the background; poll GET .../{sid} until state is not 'running'"),
+        (status = 400, description = "The simulation has ended"),
         (status = 409, description = "A round is already running")
     ),
     tag = "simlab"
@@ -202,19 +202,65 @@ pub async fn delete(
 pub async fn run_round(
     State(state): State<AppState>,
     Path((id, sid)): Path<(String, String)>,
-) -> Result<Json<SimRoundResultDto>, AppError> {
-    load_owned(&state, &id, &sid)?;
-    crate::simlab::run_round(&state, &sid)
-        .await
+) -> Result<StatusCode, AppError> {
+    let sim = load_owned(&state, &id, &sid)?;
+    if sim.state == "ended" {
+        return Err(AppError::new(StatusCode::BAD_REQUEST, "该模拟盘已结束"));
+    }
+    // Claim synchronously so a busy sim gets an immediate 409; then run the (possibly slow,
+    // multi-master) round on a background task so the request never blocks or times out. Results
+    // land in the DB as they complete; the UI polls GET .../{sid}.
+    if !state.agent.store().claim_simulation(&sid)? {
+        return Err(AppError::new(StatusCode::CONFLICT, "该模拟盘正在运行本轮，请稍候"));
+    }
+    let st = state.clone();
+    tokio::spawn(async move {
+        if let Err(e) = crate::simlab::run_round_claimed(&st, sim).await {
+            tracing::warn!(simulation = %sid, error = %e, "sim round failed");
+        }
+    });
+    Ok(StatusCode::ACCEPTED)
+}
+
+#[utoipa::path(
+    put,
+    path = "/projects/{id}/simulations/{sid}/state/{state}",
+    operation_id = "set_simulation_state",
+    params(
+        ("id" = String, Path, description = "Project id"),
+        ("sid" = String, Path, description = "Simulation id"),
+        ("state" = String, Path, description = "active | paused | ended")
+    ),
+    responses(
+        (status = 200, description = "The updated simulation", body = SimulationDto),
+        (status = 400, description = "Invalid or non-transitionable state")
+    ),
+    tag = "simlab"
+)]
+pub async fn set_state(
+    State(app): State<AppState>,
+    Path((id, sid, target)): Path<(String, String, String)>,
+) -> Result<Json<SimulationDto>, AppError> {
+    let sim = load_owned(&app, &id, &sid)?;
+    if !matches!(target.as_str(), "active" | "paused" | "ended") {
+        return Err(AppError::new(StatusCode::BAD_REQUEST, "无效的状态"));
+    }
+    // Don't stomp a round in flight (state == 'running'); pause/resume/end operate on a settled sim.
+    if sim.state == "running" {
+        return Err(AppError::new(
+            StatusCode::CONFLICT,
+            "本轮进行中，请稍候再更改状态",
+        ));
+    }
+    app.agent.store().set_simulation_state(&sid, &target)?;
+    let sim = app
+        .agent
+        .store()
+        .get_simulation(&sid)?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, "simulation not found"))?;
+    crate::simlab::to_dto(app.agent.store(), &sim)
         .map(Json)
-        .map_err(|e| {
-            let code = if e.contains("正在运行") {
-                StatusCode::CONFLICT
-            } else {
-                StatusCode::INTERNAL_SERVER_ERROR
-            };
-            AppError::new(code, e)
-        })
+        .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e))
 }
 
 #[utoipa::path(

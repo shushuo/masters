@@ -660,6 +660,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{id}/simulations/{sid}/state/{state}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["set_simulation_state"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{id}/skills": {
         parameters: {
             query?: never;
@@ -3527,14 +3543,19 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The round result (leaderboard + per-master decisions) */
-            200: {
+            /** @description Round started in the background; poll GET .../{sid} until state is not 'running' */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["SimRoundResultDto"];
+                content?: never;
+            };
+            /** @description The simulation has ended */
+            400: {
+                headers: {
+                    [name: string]: unknown;
                 };
+                content?: never;
             };
             /** @description A round is already running */
             409: {
@@ -3573,6 +3594,40 @@ export interface operations {
                 };
             };
             /** @description Invalid cron expression */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    set_simulation_state: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                id: string;
+                /** @description Simulation id */
+                sid: string;
+                /** @description active | paused | ended */
+                state: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The updated simulation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulationDto"];
+                };
+            };
+            /** @description Invalid or non-transitionable state */
             400: {
                 headers: {
                     [name: string]: unknown;

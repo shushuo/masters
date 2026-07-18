@@ -362,13 +362,27 @@ export class MastersClient {
     if (!res.ok) throw new Error(`deleteSimulation failed: ${res.status}`);
   }
 
-  /** Run one decision round now (each master decides in parallel; the engine settles). */
-  async runSimulationRound(projectId: string, sid: string): Promise<SimRoundResultDto> {
+  /** Start one decision round (runs in the background; poll getSimulation until not "running").
+   * 202 = started; 409 = a round is already in flight; 400 = the simulation has ended. */
+  async runSimulationRound(projectId: string, sid: string): Promise<void> {
     const res = await fetch(
       `${this.base()}/projects/${projectId}/simulations/${sid}/rounds`,
       { method: "POST", headers: this.headers() },
     );
     if (!res.ok) throw new Error(`runSimulationRound failed: ${res.status} ${await res.text()}`);
+  }
+
+  /** Set a simulation's lifecycle state (`active` | `paused` | `ended`). */
+  async setSimulationState(
+    projectId: string,
+    sid: string,
+    state: "active" | "paused" | "ended",
+  ): Promise<SimulationDto> {
+    const res = await fetch(
+      `${this.base()}/projects/${projectId}/simulations/${sid}/state/${state}`,
+      { method: "PUT", headers: this.headers() },
+    );
+    if (!res.ok) throw new Error(`setSimulationState failed: ${res.status} ${await res.text()}`);
     return res.json();
   }
 

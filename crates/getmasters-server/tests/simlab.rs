@@ -14,8 +14,7 @@ use getmasters_core::masters::Master;
 use getmasters_core::provider::MockProvider;
 use getmasters_core::store::{PriceRow, Store};
 use getmasters_proto::{
-    CreateSimulationRequest, SimConstraintsDto, SimLeaderboardRowDto, SimRoundDto,
-    SimRoundResultDto, SimulationDto,
+    CreateSimulationRequest, SimConstraintsDto, SimLeaderboardRowDto, SimRoundDto, SimulationDto,
 };
 use getmasters_server::{build_app, scheduler, AppState};
 
@@ -71,6 +70,51 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
+/// POST a round (202, background) then poll the sim detail until it settles back from `running`.
+async fn run_round_and_wait(
+    client: &reqwest::Client,
+    base: &str,
+    pid: &str,
+    sid: &str,
+) -> SimulationDto {
+    let res = client
+        .post(format!("{base}/projects/{pid}/simulations/{sid}/rounds"))
+        .bearer_auth(TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 202, "round accepted for background run");
+    for _ in 0..200 {
+        let sim: SimulationDto = client
+            .get(format!("{base}/projects/{pid}/simulations/{sid}"))
+            .bearer_auth(TOKEN)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        if sim.state != "running" {
+            return sim;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    panic!("round did not finish in time");
+}
+
+async fn latest_round(client: &reqwest::Client, base: &str, pid: &str, sid: &str) -> SimRoundDto {
+    let rounds: Vec<SimRoundDto> = client
+        .get(format!("{base}/projects/{pid}/simulations/{sid}/rounds"))
+        .bearer_auth(TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    rounds.into_iter().next().expect("at least one round")
+}
+
 #[tokio::test]
 async fn round_loop_benchmark_pnl_and_master_hold() {
     let dir = temp_dir();
@@ -116,15 +160,9 @@ async fn round_loop_benchmark_pnl_and_master_hold() {
     let sid = sim.id.clone();
 
     // Round 1: at 1700 the benchmark is fully invested (return ~0), the master holds (echo → unparsed).
-    let r1: SimRoundResultDto = client
-        .post(format!("{base}/projects/{pid}/simulations/{sid}/rounds"))
-        .bearer_auth(TOKEN)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
+    let sim1 = run_round_and_wait(&client, &base, &pid, &sid).await;
+    assert_eq!(sim1.round_no, 1);
+    let r1 = latest_round(&client, &base, &pid, &sid).await;
     assert_eq!(r1.round_no, 1);
     let bench = r1
         .decisions
@@ -156,15 +194,9 @@ async fn round_loop_benchmark_pnl_and_master_hold() {
         .unwrap();
 
     // Round 2: benchmark rides the move to +10%; the master (all cash) stays flat.
-    let r2: SimRoundResultDto = client
-        .post(format!("{base}/projects/{pid}/simulations/{sid}/rounds"))
-        .bearer_auth(TOKEN)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
+    let sim2 = run_round_and_wait(&client, &base, &pid, &sid).await;
+    assert_eq!(sim2.round_no, 2);
+    let r2 = latest_round(&client, &base, &pid, &sid).await;
     assert_eq!(r2.round_no, 2);
     let bench2 = r2
         .decisions
@@ -202,6 +234,35 @@ async fn round_loop_benchmark_pnl_and_master_hold() {
         .unwrap();
     assert_eq!(rounds.len(), 2);
     assert_eq!(rounds[0].round_no, 2, "newest first");
+
+    // Pause → a new round can't start (claim only claims `active`); resume restores it.
+    let paused: SimulationDto = client
+        .put(format!("{base}/projects/{pid}/simulations/{sid}/state/paused"))
+        .bearer_auth(TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(paused.state, "paused");
+    let blocked = client
+        .post(format!("{base}/projects/{pid}/simulations/{sid}/rounds"))
+        .bearer_auth(TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(blocked.status(), 409, "paused sim rejects a new round");
+    let resumed: SimulationDto = client
+        .put(format!("{base}/projects/{pid}/simulations/{sid}/state/active"))
+        .bearer_auth(TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(resumed.state, "active");
 }
 
 #[tokio::test]

@@ -2683,6 +2683,17 @@ impl Store {
         Ok(n > 0)
     }
 
+    /// Reset any simulation stuck in `running` back to `active` (startup recovery: a daemon
+    /// restart mid-round would otherwise wedge the sim, since `claim_simulation` only claims an
+    /// `active` row). Returns the number reset.
+    pub fn reset_running_simulations(&self) -> Result<usize> {
+        let n = self.lock().execute(
+            "UPDATE simulations SET state = 'active', updated_at = ?1 WHERE state = 'running'",
+            [now_ms()],
+        )?;
+        Ok(n)
+    }
+
     /// Advance the round counter and record the release back to `active`.
     pub fn finish_simulation_round(&self, id: &str, round_no: i64) -> Result<()> {
         self.lock().execute(
