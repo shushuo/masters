@@ -251,6 +251,9 @@ pub struct ScheduleRow {
     pub deliver_notify: bool,
     /// Email the run output to the configured address (opt-in `send`; Phase 3e, FR-27).
     pub deliver_email: bool,
+    /// When set, this schedule drives a simulation round (`simlab::run_round`) instead of a recipe
+    /// (模拟投资实验室). `recipe_name` is unused for such rows.
+    pub simulation_id: Option<String>,
 }
 
 /// One recorded firing of a schedule (run history).
@@ -273,6 +276,82 @@ pub struct ProjectRunRow {
     pub recipe_name: String,
     pub session_id: Option<String>,
     pub summary: Option<String>,
+}
+
+/// A simulation ("模拟盘"): masters compete under fixed conditions (模拟投资实验室). DB-owned
+/// config; `universe`/`constraints` are JSON strings the server decodes.
+#[derive(Clone, Debug)]
+pub struct SimulationRow {
+    pub id: String,
+    pub project_id: String,
+    pub name: String,
+    pub scenario: Option<String>,
+    /// JSON array of canonical symbols.
+    pub universe: String,
+    pub starting_cash: f64,
+    /// JSON constraints object (may be null).
+    pub constraints: Option<String>,
+    /// `"active"` | `"paused"` | `"ended"` | `"running"`.
+    pub state: String,
+    pub round_no: i64,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+/// One participant in a simulation — a master with its own virtual portfolio.
+#[derive(Clone, Debug)]
+pub struct SimParticipantRow {
+    pub id: String,
+    pub simulation_id: String,
+    /// Master slug, or `"__benchmark__"` for the fixed buy-and-hold line.
+    pub master_slug: String,
+    pub cash: f64,
+}
+
+/// One virtual holding for a participant.
+#[derive(Clone, Debug)]
+pub struct SimPositionRow {
+    pub symbol: String,
+    pub quantity: f64,
+    pub avg_cost: Option<f64>,
+}
+
+/// One decision round of a simulation.
+#[derive(Clone, Debug)]
+pub struct SimRoundRow {
+    pub id: String,
+    pub simulation_id: String,
+    pub round_no: i64,
+    pub quote_date: Option<String>,
+    pub status: String,
+    pub run_at: i64,
+}
+
+/// One master's decision in one round (targets + captured reasoning).
+#[derive(Clone, Debug)]
+pub struct SimDecisionRow {
+    pub id: String,
+    pub round_id: String,
+    pub participant_id: String,
+    pub session_id: Option<String>,
+    /// JSON `{symbol: weight_pct}`; `None` when the decision block was unparseable (held).
+    pub targets: Option<String>,
+    pub summary: Option<String>,
+    pub raw: Option<String>,
+    pub parsed: bool,
+    pub tokens: Option<i64>,
+}
+
+/// One post-rebalance valuation snapshot (the leaderboard/equity series).
+#[derive(Clone, Debug)]
+pub struct SimValuationRow {
+    pub id: String,
+    pub round_id: String,
+    pub participant_id: String,
+    pub nav: Option<f64>,
+    pub cash: f64,
+    pub return_pct: Option<f64>,
+    pub unvalued_count: i64,
 }
 
 /// A captured file revision (for revert/undo).
@@ -2289,12 +2368,13 @@ impl Store {
             enabled: r.get::<_, i64>(7)? != 0,
             deliver_notify: r.get::<_, i64>(8)? != 0,
             deliver_email: r.get::<_, i64>(9)? != 0,
+            simulation_id: r.get(10)?,
         })
     }
 
     const SCHEDULE_COLS: &'static str =
         "id, project_id, recipe_name, params, kind, cron_expr, next_run_at, enabled, \
-         deliver_notify, deliver_email";
+         deliver_notify, deliver_email, simulation_id";
 
     /// All schedules for a project (newest first).
     pub fn list_schedules(&self, project_id: &str) -> Result<Vec<ScheduleRow>> {
@@ -2441,6 +2521,460 @@ impl Store {
                     session_id: r.get(2)?,
                     summary: r.get(3)?,
                 })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// Create a schedule that drives a simulation round (模拟投资实验室) rather than a recipe.
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_sim_schedule(
+        &self,
+        project_id: &str,
+        simulation_id: &str,
+        kind: &str,
+        cron_expr: Option<&str>,
+        next_run_at: Option<i64>,
+        deliver_notify: bool,
+        deliver_email: bool,
+    ) -> Result<String> {
+        let id = new_id();
+        let ts = now_ms();
+        self.lock().execute(
+            "INSERT INTO schedules
+                (id, project_id, recipe_name, params, kind, cron_expr, next_run_at, enabled,
+                 deliver_notify, deliver_email, simulation_id, created_at, updated_at)
+             VALUES (?1, ?2, '', '{}', ?3, ?4, ?5, 1, ?6, ?7, ?8, ?9, ?9)",
+            rusqlite::params![
+                id,
+                project_id,
+                kind,
+                cron_expr,
+                next_run_at,
+                deliver_notify as i64,
+                deliver_email as i64,
+                simulation_id,
+                ts
+            ],
+        )?;
+        Ok(id)
+    }
+
+    /// The active (enabled) sim-driving schedule for a simulation, if any.
+    pub fn sim_schedule(&self, simulation_id: &str) -> Result<Option<ScheduleRow>> {
+        let conn = self.lock();
+        let row = conn
+            .query_row(
+                &format!(
+                    "SELECT {} FROM schedules WHERE simulation_id = ?1 ORDER BY created_at DESC LIMIT 1",
+                    Self::SCHEDULE_COLS
+                ),
+                [simulation_id],
+                Self::map_schedule,
+            )
+            .optional()?;
+        Ok(row)
+    }
+
+    /// Delete every schedule bound to a simulation (used when clearing/replacing its schedule).
+    pub fn delete_sim_schedules(&self, simulation_id: &str) -> Result<()> {
+        self.lock().execute(
+            "DELETE FROM schedules WHERE simulation_id = ?1",
+            [simulation_id],
+        )?;
+        Ok(())
+    }
+
+    // --- Simulation Investment Lab (模拟投资实验室, migration 0024) -----------
+
+    fn map_simulation(r: &rusqlite::Row) -> rusqlite::Result<SimulationRow> {
+        Ok(SimulationRow {
+            id: r.get(0)?,
+            project_id: r.get(1)?,
+            name: r.get(2)?,
+            scenario: r.get(3)?,
+            universe: r.get(4)?,
+            starting_cash: r.get(5)?,
+            constraints: r.get(6)?,
+            state: r.get(7)?,
+            round_no: r.get(8)?,
+            created_at: r.get(9)?,
+            updated_at: r.get(10)?,
+        })
+    }
+
+    const SIM_COLS: &'static str = "id, project_id, name, scenario, universe, starting_cash, \
+         constraints, state, round_no, created_at, updated_at";
+
+    /// Create a simulation. Returns its id.
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_simulation(
+        &self,
+        project_id: &str,
+        name: &str,
+        scenario: Option<&str>,
+        universe_json: &str,
+        starting_cash: f64,
+        constraints_json: Option<&str>,
+    ) -> Result<String> {
+        let id = new_id();
+        let ts = now_ms();
+        self.lock().execute(
+            "INSERT INTO simulations (id, project_id, name, scenario, universe, starting_cash,
+                                      constraints, state, round_no, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'active', 0, ?8, ?8)",
+            rusqlite::params![
+                id,
+                project_id,
+                name,
+                scenario,
+                universe_json,
+                starting_cash,
+                constraints_json,
+                ts
+            ],
+        )?;
+        Ok(id)
+    }
+
+    /// All simulations for a project (newest first).
+    pub fn list_simulations(&self, project_id: &str) -> Result<Vec<SimulationRow>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {} FROM simulations WHERE project_id = ?1 ORDER BY created_at DESC",
+            Self::SIM_COLS
+        ))?;
+        let rows = stmt
+            .query_map([project_id], Self::map_simulation)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// One simulation by id.
+    pub fn get_simulation(&self, id: &str) -> Result<Option<SimulationRow>> {
+        let conn = self.lock();
+        let row = conn
+            .query_row(
+                &format!("SELECT {} FROM simulations WHERE id = ?1", Self::SIM_COLS),
+                [id],
+                Self::map_simulation,
+            )
+            .optional()?;
+        Ok(row)
+    }
+
+    /// Set a simulation's lifecycle state (`active|paused|ended|running`).
+    pub fn set_simulation_state(&self, id: &str, state: &str) -> Result<bool> {
+        let n = self.lock().execute(
+            "UPDATE simulations SET state = ?2, updated_at = ?3 WHERE id = ?1",
+            rusqlite::params![id, state, now_ms()],
+        )?;
+        Ok(n > 0)
+    }
+
+    /// Atomically claim a simulation for a round: flip `active → running` (concurrency guard so a
+    /// manual click and a scheduler tick can't run the same sim twice). Returns true if claimed.
+    pub fn claim_simulation(&self, id: &str) -> Result<bool> {
+        let n = self.lock().execute(
+            "UPDATE simulations SET state = 'running', updated_at = ?2
+             WHERE id = ?1 AND state = 'active'",
+            rusqlite::params![id, now_ms()],
+        )?;
+        Ok(n > 0)
+    }
+
+    /// Advance the round counter and record the release back to `active`.
+    pub fn finish_simulation_round(&self, id: &str, round_no: i64) -> Result<()> {
+        self.lock().execute(
+            "UPDATE simulations SET round_no = ?2, state = 'active', updated_at = ?3 WHERE id = ?1",
+            rusqlite::params![id, round_no, now_ms()],
+        )?;
+        Ok(())
+    }
+
+    /// Delete a simulation (cascades participants/positions/rounds/decisions/valuations).
+    pub fn delete_simulation(&self, id: &str) -> Result<()> {
+        let conn = self.lock();
+        conn.execute("DELETE FROM schedules WHERE simulation_id = ?1", [id])?;
+        conn.execute("DELETE FROM simulations WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    /// Add a participant (idempotent per `(sim, slug)`); seeds its cash to `cash`.
+    pub fn add_sim_participant(
+        &self,
+        simulation_id: &str,
+        master_slug: &str,
+        cash: f64,
+    ) -> Result<String> {
+        let conn = self.lock();
+        let ts = now_ms();
+        let existing: Option<String> = conn
+            .query_row(
+                "SELECT id FROM sim_participants WHERE simulation_id = ?1 AND master_slug = ?2",
+                rusqlite::params![simulation_id, master_slug],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if let Some(id) = existing {
+            return Ok(id);
+        }
+        let id = new_id();
+        conn.execute(
+            "INSERT INTO sim_participants (id, simulation_id, master_slug, cash, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+            rusqlite::params![id, simulation_id, master_slug, cash, ts],
+        )?;
+        Ok(id)
+    }
+
+    /// A simulation's participants (creation order).
+    pub fn list_sim_participants(&self, simulation_id: &str) -> Result<Vec<SimParticipantRow>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(
+            "SELECT id, simulation_id, master_slug, cash FROM sim_participants
+             WHERE simulation_id = ?1 ORDER BY created_at ASC",
+        )?;
+        let rows = stmt
+            .query_map([simulation_id], |r| {
+                Ok(SimParticipantRow {
+                    id: r.get(0)?,
+                    simulation_id: r.get(1)?,
+                    master_slug: r.get(2)?,
+                    cash: r.get(3)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// Set a participant's cash balance.
+    pub fn set_sim_participant_cash(&self, participant_id: &str, cash: f64) -> Result<()> {
+        self.lock().execute(
+            "UPDATE sim_participants SET cash = ?2, updated_at = ?3 WHERE id = ?1",
+            rusqlite::params![participant_id, cash, now_ms()],
+        )?;
+        Ok(())
+    }
+
+    /// A participant's current virtual holdings.
+    pub fn list_sim_positions(&self, participant_id: &str) -> Result<Vec<SimPositionRow>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(
+            "SELECT symbol, quantity, avg_cost FROM sim_positions
+             WHERE participant_id = ?1 ORDER BY symbol ASC",
+        )?;
+        let rows = stmt
+            .query_map([participant_id], |r| {
+                Ok(SimPositionRow {
+                    symbol: r.get(0)?,
+                    quantity: r.get(1)?,
+                    avg_cost: r.get(2)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// Replace a participant's positions with the post-rebalance set (delete-then-insert the
+    /// non-zero holdings — the engine has already computed the whole new book).
+    pub fn replace_sim_positions(
+        &self,
+        participant_id: &str,
+        positions: &[(String, f64, Option<f64>)],
+    ) -> Result<()> {
+        let conn = self.lock();
+        let ts = now_ms();
+        conn.execute(
+            "DELETE FROM sim_positions WHERE participant_id = ?1",
+            [participant_id],
+        )?;
+        for (symbol, qty, avg_cost) in positions {
+            if *qty <= 0.0 {
+                continue;
+            }
+            conn.execute(
+                "INSERT INTO sim_positions (id, participant_id, symbol, quantity, avg_cost, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![new_id(), participant_id, symbol, qty, avg_cost, ts],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Insert a round row. Returns its id.
+    pub fn insert_sim_round(
+        &self,
+        simulation_id: &str,
+        round_no: i64,
+        quote_date: Option<&str>,
+        status: &str,
+    ) -> Result<String> {
+        let id = new_id();
+        self.lock().execute(
+            "INSERT INTO sim_rounds (id, simulation_id, round_no, quote_date, status, run_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![id, simulation_id, round_no, quote_date, status, now_ms()],
+        )?;
+        Ok(id)
+    }
+
+    /// A simulation's rounds (newest first).
+    pub fn list_sim_rounds(&self, simulation_id: &str) -> Result<Vec<SimRoundRow>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(
+            "SELECT id, simulation_id, round_no, quote_date, status, run_at FROM sim_rounds
+             WHERE simulation_id = ?1 ORDER BY round_no DESC",
+        )?;
+        let rows = stmt
+            .query_map([simulation_id], |r| {
+                Ok(SimRoundRow {
+                    id: r.get(0)?,
+                    simulation_id: r.get(1)?,
+                    round_no: r.get(2)?,
+                    quote_date: r.get(3)?,
+                    status: r.get(4)?,
+                    run_at: r.get(5)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    fn map_sim_decision(r: &rusqlite::Row) -> rusqlite::Result<SimDecisionRow> {
+        Ok(SimDecisionRow {
+            id: r.get(0)?,
+            round_id: r.get(1)?,
+            participant_id: r.get(2)?,
+            session_id: r.get(3)?,
+            targets: r.get(4)?,
+            summary: r.get(5)?,
+            raw: r.get(6)?,
+            parsed: r.get::<_, i64>(7)? != 0,
+            tokens: r.get(8)?,
+        })
+    }
+
+    /// Record a participant's decision in a round.
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_sim_decision(
+        &self,
+        round_id: &str,
+        participant_id: &str,
+        session_id: Option<&str>,
+        targets_json: Option<&str>,
+        summary: Option<&str>,
+        raw: Option<&str>,
+        parsed: bool,
+        tokens: Option<i64>,
+    ) -> Result<()> {
+        self.lock().execute(
+            "INSERT INTO sim_decisions (id, round_id, participant_id, session_id, targets, summary,
+                                        raw, parsed, tokens, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            rusqlite::params![
+                new_id(),
+                round_id,
+                participant_id,
+                session_id,
+                targets_json,
+                summary,
+                raw,
+                parsed as i64,
+                tokens,
+                now_ms()
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// A round's decisions (one per participant).
+    pub fn list_round_decisions(&self, round_id: &str) -> Result<Vec<SimDecisionRow>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(
+            "SELECT id, round_id, participant_id, session_id, targets, summary, raw, parsed, tokens
+             FROM sim_decisions WHERE round_id = ?1",
+        )?;
+        let rows = stmt
+            .query_map([round_id], Self::map_sim_decision)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// Record a post-rebalance valuation snapshot.
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_sim_valuation(
+        &self,
+        round_id: &str,
+        participant_id: &str,
+        nav: Option<f64>,
+        cash: f64,
+        return_pct: Option<f64>,
+        unvalued_count: i64,
+    ) -> Result<()> {
+        self.lock().execute(
+            "INSERT INTO sim_valuations (id, round_id, participant_id, nav, cash, return_pct,
+                                         unvalued_count, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                new_id(),
+                round_id,
+                participant_id,
+                nav,
+                cash,
+                return_pct,
+                unvalued_count,
+                now_ms()
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Every participant's valuation for one round (for the round-detail view).
+    pub fn list_round_valuations(&self, round_id: &str) -> Result<Vec<SimValuationRow>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(
+            "SELECT id, round_id, participant_id, nav, cash, return_pct, unvalued_count
+             FROM sim_valuations WHERE round_id = ?1",
+        )?;
+        let rows = stmt
+            .query_map([round_id], |r| {
+                Ok(SimValuationRow {
+                    id: r.get(0)?,
+                    round_id: r.get(1)?,
+                    participant_id: r.get(2)?,
+                    nav: r.get(3)?,
+                    cash: r.get(4)?,
+                    return_pct: r.get(5)?,
+                    unvalued_count: r.get(6)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// A participant's valuation series across all rounds (oldest first) — the equity curve.
+    pub fn sim_valuation_series(&self, participant_id: &str) -> Result<Vec<(i64, SimValuationRow)>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(
+            "SELECT v.id, v.round_id, v.participant_id, v.nav, v.cash, v.return_pct,
+                    v.unvalued_count, rd.round_no
+             FROM sim_valuations v JOIN sim_rounds rd ON rd.id = v.round_id
+             WHERE v.participant_id = ?1 ORDER BY rd.round_no ASC",
+        )?;
+        let rows = stmt
+            .query_map([participant_id], |r| {
+                let row = SimValuationRow {
+                    id: r.get(0)?,
+                    round_id: r.get(1)?,
+                    participant_id: r.get(2)?,
+                    nav: r.get(3)?,
+                    cash: r.get(4)?,
+                    return_pct: r.get(5)?,
+                    unvalued_count: r.get(6)?,
+                };
+                let round_no: i64 = r.get(7)?;
+                Ok((round_no, row))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)

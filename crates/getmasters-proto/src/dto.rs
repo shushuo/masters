@@ -963,6 +963,163 @@ pub struct InvestingWorkspaceDto {
     pub members: Vec<String>,
 }
 
+// --- Simulation Investment Lab (模拟投资实验室) ------------------------------
+
+/// A simulation's constraints (Alpha-Arena-style given conditions).
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct SimConstraintsDto {
+    /// Reject short positions. Default: true.
+    #[serde(default = "default_true")]
+    pub long_only: bool,
+    /// Per-symbol cap as a fraction 0..1 (e.g. 0.4 = 40%).
+    #[serde(default)]
+    pub max_weight: Option<f64>,
+    /// Minimum cash weight as a fraction 0..1.
+    #[serde(default)]
+    pub cash_floor: Option<f64>,
+    /// Benchmark symbol for the fixed buy-and-hold comparison line.
+    #[serde(default)]
+    pub benchmark: Option<String>,
+    /// Round-trip turnover fee in basis points (0 = frictionless).
+    #[serde(default)]
+    pub fee_bps: f64,
+}
+
+impl Default for SimConstraintsDto {
+    fn default() -> Self {
+        Self {
+            long_only: true,
+            max_weight: None,
+            cash_floor: None,
+            benchmark: None,
+            fee_bps: 0.0,
+        }
+    }
+}
+
+/// A simulation ("模拟盘"): masters compete under fixed conditions. Forward-in-time paper trading —
+/// virtual portfolios mark to live EOD prices as the real market moves between rounds.
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct SimulationDto {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub scenario: Option<String>,
+    /// Canonical symbols the masters may allocate across.
+    pub universe: Vec<String>,
+    pub starting_cash: f64,
+    #[serde(default)]
+    pub constraints: SimConstraintsDto,
+    /// `"active"` | `"paused"` | `"ended"` | `"running"`.
+    pub state: String,
+    pub round_no: i64,
+    pub created_at: i64,
+    /// Participants with their latest leaderboard standing.
+    #[serde(default)]
+    pub participants: Vec<SimLeaderboardRowDto>,
+    /// The cron expression of the auto-round schedule, when one is set.
+    #[serde(default)]
+    pub schedule_cron: Option<String>,
+}
+
+/// Body for `POST /projects/{id}/simulations`.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, ToSchema)]
+pub struct CreateSimulationRequest {
+    pub name: String,
+    #[serde(default)]
+    pub scenario: Option<String>,
+    /// Symbols (canonical or common forms) the masters may allocate across.
+    pub universe: Vec<String>,
+    pub starting_cash: f64,
+    #[serde(default)]
+    pub constraints: SimConstraintsDto,
+    /// Participant master slugs (global or project masters). A benchmark line is added
+    /// automatically when `constraints.benchmark` is set.
+    pub participants: Vec<String>,
+}
+
+/// One participant's standing on the leaderboard (latest valuation).
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct SimLeaderboardRowDto {
+    /// Master slug, or `"__benchmark__"` for the fixed buy-and-hold line.
+    pub master_slug: String,
+    /// Latest post-round NAV (null when nothing could be valued yet).
+    #[serde(default)]
+    pub nav: Option<f64>,
+    pub cash: f64,
+    /// Cumulative return vs. starting cash (0.1 = +10%).
+    #[serde(default)]
+    pub return_pct: Option<f64>,
+    /// Cumulative-return series across rounds (oldest first) — the equity sparkline.
+    #[serde(default)]
+    pub equity: Vec<f64>,
+    #[serde(default)]
+    pub unvalued_count: i64,
+}
+
+/// One master's decision in a round (targets + captured reasoning).
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct SimDecisionDto {
+    pub master_slug: String,
+    /// Target weights (percent of NAV) the engine applied; empty when held/unparsed.
+    #[serde(default)]
+    pub targets: std::collections::HashMap<String, f64>,
+    #[serde(default)]
+    pub summary: Option<String>,
+    /// The master's full reasoning reply (RETuning-style framework → evidence → decision).
+    #[serde(default)]
+    pub reasoning: Option<String>,
+    /// The run session (for audit/trace).
+    #[serde(default)]
+    pub session_id: Option<String>,
+    /// False when the decision block was unparseable → the master held this round.
+    pub parsed: bool,
+    /// Post-round NAV for this participant.
+    #[serde(default)]
+    pub nav: Option<f64>,
+    #[serde(default)]
+    pub return_pct: Option<f64>,
+    /// Token usage of the run (cost signal).
+    #[serde(default)]
+    pub tokens: Option<i64>,
+}
+
+/// One decision round with every participant's decision.
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct SimRoundDto {
+    pub round_no: i64,
+    #[serde(default)]
+    pub quote_date: Option<String>,
+    pub status: String,
+    pub run_at: i64,
+    #[serde(default)]
+    pub decisions: Vec<SimDecisionDto>,
+}
+
+/// Result of running one round (`POST .../rounds`).
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct SimRoundResultDto {
+    pub round_no: i64,
+    #[serde(default)]
+    pub quote_date: Option<String>,
+    pub leaderboard: Vec<SimLeaderboardRowDto>,
+    pub decisions: Vec<SimDecisionDto>,
+}
+
+/// Body for `PUT /projects/{id}/simulations/{sid}/schedule` — set or clear the auto-round cron.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, ToSchema)]
+pub struct SetSimScheduleRequest {
+    /// Cron expression (5-7 fields) to run a round on; null/empty clears the schedule.
+    #[serde(default)]
+    pub cron_expr: Option<String>,
+    /// Push an on-device OS notification with the round digest.
+    #[serde(default)]
+    pub deliver_notify: bool,
+    /// Email the round digest (opt-in `send`).
+    #[serde(default)]
+    pub deliver_email: bool,
+}
+
 /// Uniform error envelope returned on any 4xx/5xx.
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 pub struct ErrorDto {

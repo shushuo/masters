@@ -8,6 +8,7 @@ import { Lab } from "./components/Lab";
 import { Settings } from "./components/Settings";
 import { Watch } from "./components/Watch";
 import { Briefings } from "./components/Briefings";
+import SimLab from "./components/SimLab";
 import { Onboarding } from "./components/Onboarding";
 import { Sidebar } from "./components/Sidebar";
 import { checkForUpdate, installUpdate, type Update } from "./lib/updater";
@@ -207,6 +208,8 @@ export function App() {
           <Watch client={client} onAsk={openAsk} />
         ) : view === "briefings" ? (
           <Briefings client={client} onAsk={openAsk} onSeen={markBriefingsSeen} />
+        ) : view === "simlab" ? (
+          <SimLab client={client} onAsk={openAsk} />
         ) : view === "lab" ? (
           <Lab
             client={client}

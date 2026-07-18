@@ -56,6 +56,14 @@ export type DailySnapshotDto = components["schemas"]["DailySnapshotDto"];
 export type QuoteDto = components["schemas"]["QuoteDto"];
 export type InvestingWorkspaceDto = components["schemas"]["InvestingWorkspaceDto"];
 export type BriefingDto = components["schemas"]["BriefingDto"];
+export type SimulationDto = components["schemas"]["SimulationDto"];
+export type CreateSimulationRequest = components["schemas"]["CreateSimulationRequest"];
+export type SimConstraintsDto = components["schemas"]["SimConstraintsDto"];
+export type SimLeaderboardRowDto = components["schemas"]["SimLeaderboardRowDto"];
+export type SimDecisionDto = components["schemas"]["SimDecisionDto"];
+export type SimRoundDto = components["schemas"]["SimRoundDto"];
+export type SimRoundResultDto = components["schemas"]["SimRoundResultDto"];
+export type SetSimScheduleRequest = components["schemas"]["SetSimScheduleRequest"];
 
 /** Connection details handed over by the daemon handshake (`GETMASTERSD_READY`). */
 export interface DaemonConn {
@@ -308,6 +316,96 @@ export class MastersClient {
       headers: this.headers(),
     });
     if (!res.ok) throw new Error(`getPortfolio failed: ${res.status}`);
+    return res.json();
+  }
+
+  // --- Simulation Investment Lab (模拟投资实验室) ---------------------------
+
+  /** A project's simulations (newest first), each with its leaderboard. */
+  async listSimulations(projectId: string): Promise<SimulationDto[]> {
+    const res = await fetch(`${this.base()}/projects/${projectId}/simulations`, {
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`listSimulations failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** Create a simulation (masters + given conditions). */
+  async createSimulation(
+    projectId: string,
+    body: CreateSimulationRequest,
+  ): Promise<SimulationDto> {
+    const res = await fetch(`${this.base()}/projects/${projectId}/simulations`, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`createSimulation failed: ${res.status} ${await res.text()}`);
+    return res.json();
+  }
+
+  /** One simulation with its leaderboard. */
+  async getSimulation(projectId: string, sid: string): Promise<SimulationDto> {
+    const res = await fetch(`${this.base()}/projects/${projectId}/simulations/${sid}`, {
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`getSimulation failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** Delete a simulation. */
+  async deleteSimulation(projectId: string, sid: string): Promise<void> {
+    const res = await fetch(`${this.base()}/projects/${projectId}/simulations/${sid}`, {
+      method: "DELETE",
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`deleteSimulation failed: ${res.status}`);
+  }
+
+  /** Run one decision round now (each master decides in parallel; the engine settles). */
+  async runSimulationRound(projectId: string, sid: string): Promise<SimRoundResultDto> {
+    const res = await fetch(
+      `${this.base()}/projects/${projectId}/simulations/${sid}/rounds`,
+      { method: "POST", headers: this.headers() },
+    );
+    if (!res.ok) throw new Error(`runSimulationRound failed: ${res.status} ${await res.text()}`);
+    return res.json();
+  }
+
+  /** Round history with per-master decisions + reasoning (newest first). */
+  async listSimulationRounds(projectId: string, sid: string): Promise<SimRoundDto[]> {
+    const res = await fetch(
+      `${this.base()}/projects/${projectId}/simulations/${sid}/rounds`,
+      { headers: this.headers() },
+    );
+    if (!res.ok) throw new Error(`listSimulationRounds failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** Cumulative-return leaderboard with equity series. */
+  async getSimulationLeaderboard(
+    projectId: string,
+    sid: string,
+  ): Promise<SimLeaderboardRowDto[]> {
+    const res = await fetch(
+      `${this.base()}/projects/${projectId}/simulations/${sid}/leaderboard`,
+      { headers: this.headers() },
+    );
+    if (!res.ok) throw new Error(`getSimulationLeaderboard failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** Set or clear the auto-round cron schedule. */
+  async setSimulationSchedule(
+    projectId: string,
+    sid: string,
+    body: SetSimScheduleRequest,
+  ): Promise<SimulationDto> {
+    const res = await fetch(
+      `${this.base()}/projects/${projectId}/simulations/${sid}/schedule`,
+      { method: "PUT", headers: this.headers(), body: JSON.stringify(body) },
+    );
+    if (!res.ok) throw new Error(`setSimulationSchedule failed: ${res.status} ${await res.text()}`);
     return res.json();
   }
 

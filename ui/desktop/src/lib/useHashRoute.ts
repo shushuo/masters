@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
  * masters hub) live under the `lab` (高级工作台) view; legacy hashes (`#/chat`,
  * `#/projects`, `#/masters`) parse into the matching lab sub-route so old links keep working.
  */
-export type View = "ask" | "watch" | "briefings" | "settings" | "lab";
+export type View = "ask" | "watch" | "briefings" | "simlab" | "settings" | "lab";
 export type LabTab = "chat" | "projects" | "masters";
 
 export interface Route {
@@ -21,7 +21,7 @@ export interface Route {
   tab?: string;
 }
 
-const VIEWS: View[] = ["ask", "watch", "briefings", "settings", "lab"];
+const VIEWS: View[] = ["ask", "watch", "briefings", "simlab", "settings", "lab"];
 const LAB_TABS: LabTab[] = ["chat", "projects", "masters"];
 
 export function parseHash(hash: string): Route {

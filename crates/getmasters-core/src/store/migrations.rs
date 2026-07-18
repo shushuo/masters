@@ -473,6 +473,82 @@ pub const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX idx_announcements_symbol ON announcements(symbol, ann_time);
     "#,
+    // 0024 — Simulation Investment Lab (模拟投资实验室): forward-in-time paper trading where
+    // masters compete under fixed conditions (docs — inspired by Alpha Arena + RETuning). DB-owned
+    // structured state (like schedules/study-plans); kept fully separate from the real
+    // assets/positions ledger so paper trades never touch the user's holdings (ADR-0016). Each
+    // round marks virtual portfolios to live EOD prices (no historical series exists — this is
+    // live-forward, not a backtest). Money-math is the deterministic engine's, never the LLM's
+    // (NFR-INV-1). Ints/strings/reals only (lean core). The `schedules.simulation_id` column lets
+    // the existing scheduler drive sim rounds (branch in run_due) without a parallel tick loop.
+    r#"
+    CREATE TABLE simulations (
+        id            TEXT PRIMARY KEY,
+        project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        name          TEXT NOT NULL,
+        scenario      TEXT,                          -- 情景/setup note (free text)
+        universe      TEXT NOT NULL,                 -- JSON array of canonical symbols
+        starting_cash REAL NOT NULL,
+        constraints   TEXT,                          -- JSON: {long_only,max_weight,cash_floor,benchmark,fee_bps}
+        state         TEXT NOT NULL DEFAULT 'active',-- active | paused | ended | running
+        round_no      INTEGER NOT NULL DEFAULT 0,    -- rounds run so far
+        created_at    INTEGER NOT NULL,
+        updated_at    INTEGER NOT NULL
+    );
+    CREATE INDEX idx_simulations_project ON simulations(project_id, state);
+    CREATE TABLE sim_participants (
+        id            TEXT PRIMARY KEY,
+        simulation_id TEXT NOT NULL REFERENCES simulations(id) ON DELETE CASCADE,
+        master_slug   TEXT NOT NULL,                 -- '__benchmark__' = the fixed buy-and-hold line
+        cash          REAL NOT NULL,                 -- current virtual cash
+        created_at    INTEGER NOT NULL,
+        updated_at    INTEGER NOT NULL,
+        UNIQUE(simulation_id, master_slug)
+    );
+    CREATE TABLE sim_positions (
+        id             TEXT PRIMARY KEY,
+        participant_id TEXT NOT NULL REFERENCES sim_participants(id) ON DELETE CASCADE,
+        symbol         TEXT NOT NULL,
+        quantity       REAL NOT NULL,                -- virtual shares (fractional OK)
+        avg_cost       REAL,
+        updated_at     INTEGER NOT NULL,
+        UNIQUE(participant_id, symbol)
+    );
+    CREATE TABLE sim_rounds (
+        id            TEXT PRIMARY KEY,
+        simulation_id TEXT NOT NULL REFERENCES simulations(id) ON DELETE CASCADE,
+        round_no      INTEGER NOT NULL,
+        quote_date    TEXT,                          -- 'YYYY-MM-DD' the close prices used
+        status        TEXT NOT NULL,                 -- ok | error
+        run_at        INTEGER NOT NULL
+    );
+    CREATE INDEX idx_sim_rounds_sim ON sim_rounds(simulation_id, round_no);
+    CREATE TABLE sim_decisions (
+        id             TEXT PRIMARY KEY,
+        round_id       TEXT NOT NULL REFERENCES sim_rounds(id) ON DELETE CASCADE,
+        participant_id TEXT NOT NULL REFERENCES sim_participants(id) ON DELETE CASCADE,
+        session_id     TEXT,                         -- the master's run session → full reasoning
+        targets        TEXT,                         -- JSON {symbol: weight_pct}; null = held
+        summary        TEXT,                         -- short rationale
+        raw            TEXT,                         -- the model's full reply (for unparsed display)
+        parsed         INTEGER NOT NULL DEFAULT 1,   -- 0 = decision block unparseable (held)
+        tokens         INTEGER,                      -- token usage of the run (cost signal)
+        created_at     INTEGER NOT NULL
+    );
+    CREATE INDEX idx_sim_decisions_round ON sim_decisions(round_id);
+    CREATE TABLE sim_valuations (
+        id             TEXT PRIMARY KEY,
+        round_id       TEXT NOT NULL REFERENCES sim_rounds(id) ON DELETE CASCADE,
+        participant_id TEXT NOT NULL REFERENCES sim_participants(id) ON DELETE CASCADE,
+        nav            REAL,                          -- post-rebalance total value (null if unvalued)
+        cash           REAL NOT NULL,
+        return_pct     REAL,                          -- cumulative vs starting_cash
+        unvalued_count INTEGER NOT NULL DEFAULT 0,
+        created_at     INTEGER NOT NULL
+    );
+    CREATE INDEX idx_sim_valuations_round ON sim_valuations(round_id);
+    ALTER TABLE schedules ADD COLUMN simulation_id TEXT;
+    "#,
 ];
 
 /// Apply any pending migrations. Safe to call on every startup.

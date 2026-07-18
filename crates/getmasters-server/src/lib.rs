@@ -20,6 +20,7 @@ pub mod openapi;
 pub mod recipe;
 pub mod routes;
 pub mod scheduler;
+pub mod simlab;
 pub mod snapshot;
 pub mod state;
 pub mod team;
@@ -85,6 +86,26 @@ pub fn build_app(state: AppState) -> Router {
         .route(
             "/projects/{id}/portfolio",
             get(routes::investing::get_portfolio),
+        )
+        .route(
+            "/projects/{id}/simulations",
+            post(routes::simlab::create).get(routes::simlab::list),
+        )
+        .route(
+            "/projects/{id}/simulations/{sid}",
+            get(routes::simlab::get).delete(routes::simlab::delete),
+        )
+        .route(
+            "/projects/{id}/simulations/{sid}/rounds",
+            post(routes::simlab::run_round).get(routes::simlab::rounds),
+        )
+        .route(
+            "/projects/{id}/simulations/{sid}/leaderboard",
+            get(routes::simlab::leaderboard),
+        )
+        .route(
+            "/projects/{id}/simulations/{sid}/schedule",
+            axum::routing::put(routes::simlab::set_schedule),
         )
         .route("/snapshot/daily", get(routes::snapshot::daily))
         .route(

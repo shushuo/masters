@@ -108,6 +108,7 @@ const dict = {
     en: "ⓘ Facts and risk notes only — not investment advice",
   },
   "nav.briefings": { zh: "简报", en: "Briefings" },
+  "nav.simlab": { zh: "模拟盘", en: "Sim Lab" },
   "briefings.title": { zh: "简报", en: "Briefings" },
   "briefings.subtitle": {
     zh: "例行的周报与异动提醒会出现在这里；没有值得说的就不打扰你。",

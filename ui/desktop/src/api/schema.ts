@@ -580,6 +580,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{id}/simulations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_simulations"];
+        put?: never;
+        post: operations["create_simulation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/simulations/{sid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_simulation"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_simulation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/simulations/{sid}/leaderboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_simulation_leaderboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/simulations/{sid}/rounds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_simulation_rounds"];
+        put?: never;
+        post: operations["run_simulation_round"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/simulations/{sid}/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["set_simulation_schedule"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{id}/skills": {
         parameters: {
             query?: never;
@@ -1186,6 +1266,21 @@ export interface components {
             project_id?: string | null;
             /** @description Optional human-readable title. */
             title?: string | null;
+        };
+        /** @description Body for `POST /projects/{id}/simulations`. */
+        CreateSimulationRequest: {
+            constraints?: components["schemas"]["SimConstraintsDto"];
+            name: string;
+            /**
+             * @description Participant master slugs (global or project masters). A benchmark line is added
+             *     automatically when `constraints.benchmark` is set.
+             */
+            participants: string[];
+            scenario?: string | null;
+            /** Format: double */
+            starting_cash: number;
+            /** @description Symbols (canonical or common forms) the masters may allocate across. */
+            universe: string[];
         };
         /** @description Body for `POST /projects/{id}/teams` — create or overwrite a team. */
         CreateTeamRequest: {
@@ -1891,6 +1986,15 @@ export interface components {
             deliver_notify?: boolean | null;
             enabled?: boolean | null;
         };
+        /** @description Body for `PUT /projects/{id}/simulations/{sid}/schedule` — set or clear the auto-round cron. */
+        SetSimScheduleRequest: {
+            /** @description Cron expression (5-7 fields) to run a round on; null/empty clears the schedule. */
+            cron_expr?: string | null;
+            /** @description Email the round digest (opt-in `send`). */
+            deliver_email?: boolean;
+            /** @description Push an on-device OS notification with the round digest. */
+            deliver_notify?: boolean;
+        };
         /** @description Current effective settings (secrets are reported as present/absent, never returned). */
         SettingsDto: {
             /** @description Whether an Anthropic API key is configured (keychain or env). */
@@ -1916,6 +2020,118 @@ export interface components {
             } | null;
             /** @description Enable/disable anonymous install telemetry (opt-out; on by default). */
             telemetry_enabled?: boolean | null;
+        };
+        /** @description A simulation's constraints (Alpha-Arena-style given conditions). */
+        SimConstraintsDto: {
+            /** @description Benchmark symbol for the fixed buy-and-hold comparison line. */
+            benchmark?: string | null;
+            /**
+             * Format: double
+             * @description Minimum cash weight as a fraction 0..1.
+             */
+            cash_floor?: number | null;
+            /**
+             * Format: double
+             * @description Round-trip turnover fee in basis points (0 = frictionless).
+             */
+            fee_bps?: number;
+            /** @description Reject short positions. Default: true. */
+            long_only?: boolean;
+            /**
+             * Format: double
+             * @description Per-symbol cap as a fraction 0..1 (e.g. 0.4 = 40%).
+             */
+            max_weight?: number | null;
+        };
+        /** @description One master's decision in a round (targets + captured reasoning). */
+        SimDecisionDto: {
+            master_slug: string;
+            /**
+             * Format: double
+             * @description Post-round NAV for this participant.
+             */
+            nav?: number | null;
+            /** @description False when the decision block was unparseable → the master held this round. */
+            parsed: boolean;
+            /** @description The master's full reasoning reply (RETuning-style framework → evidence → decision). */
+            reasoning?: string | null;
+            /** Format: double */
+            return_pct?: number | null;
+            /** @description The run session (for audit/trace). */
+            session_id?: string | null;
+            summary?: string | null;
+            /** @description Target weights (percent of NAV) the engine applied; empty when held/unparsed. */
+            targets?: {
+                [key: string]: number;
+            };
+            /**
+             * Format: int64
+             * @description Token usage of the run (cost signal).
+             */
+            tokens?: number | null;
+        };
+        /** @description One participant's standing on the leaderboard (latest valuation). */
+        SimLeaderboardRowDto: {
+            /** Format: double */
+            cash: number;
+            /** @description Cumulative-return series across rounds (oldest first) — the equity sparkline. */
+            equity?: number[];
+            /** @description Master slug, or `"__benchmark__"` for the fixed buy-and-hold line. */
+            master_slug: string;
+            /**
+             * Format: double
+             * @description Latest post-round NAV (null when nothing could be valued yet).
+             */
+            nav?: number | null;
+            /**
+             * Format: double
+             * @description Cumulative return vs. starting cash (0.1 = +10%).
+             */
+            return_pct?: number | null;
+            /** Format: int64 */
+            unvalued_count?: number;
+        };
+        /** @description One decision round with every participant's decision. */
+        SimRoundDto: {
+            decisions?: components["schemas"]["SimDecisionDto"][];
+            quote_date?: string | null;
+            /** Format: int64 */
+            round_no: number;
+            /** Format: int64 */
+            run_at: number;
+            status: string;
+        };
+        /** @description Result of running one round (`POST .../rounds`). */
+        SimRoundResultDto: {
+            decisions: components["schemas"]["SimDecisionDto"][];
+            leaderboard: components["schemas"]["SimLeaderboardRowDto"][];
+            quote_date?: string | null;
+            /** Format: int64 */
+            round_no: number;
+        };
+        /**
+         * @description A simulation ("模拟盘"): masters compete under fixed conditions. Forward-in-time paper trading —
+         *     virtual portfolios mark to live EOD prices as the real market moves between rounds.
+         */
+        SimulationDto: {
+            constraints?: components["schemas"]["SimConstraintsDto"];
+            /** Format: int64 */
+            created_at: number;
+            id: string;
+            name: string;
+            /** @description Participants with their latest leaderboard standing. */
+            participants?: components["schemas"]["SimLeaderboardRowDto"][];
+            /** Format: int64 */
+            round_no: number;
+            scenario?: string | null;
+            /** @description The cron expression of the auto-round schedule, when one is set. */
+            schedule_cron?: string | null;
+            /** Format: double */
+            starting_cash: number;
+            /** @description `"active"` | `"paused"` | `"ended"` | `"running"`. */
+            state: string;
+            /** @description Canonical symbols the masters may allocate across. */
+            universe: string[];
         };
         /**
          * @description One saved skill. `tags`/`steps` carry the full definition for the cloud catalog + import; the
@@ -3139,6 +3355,229 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ScheduledRunDto"][];
                 };
+            };
+        };
+    };
+    list_simulations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The project's simulations (newest first) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulationDto"][];
+                };
+            };
+        };
+    };
+    create_simulation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSimulationRequest"];
+            };
+        };
+        responses: {
+            /** @description The created simulation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulationDto"];
+                };
+            };
+            /** @description No valid universe/participants */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_simulation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                id: string;
+                /** @description Simulation id */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The simulation with its leaderboard */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulationDto"];
+                };
+            };
+        };
+    };
+    delete_simulation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                id: string;
+                /** @description Simulation id */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_simulation_leaderboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                id: string;
+                /** @description Simulation id */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cumulative-return leaderboard with equity series */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimLeaderboardRowDto"][];
+                };
+            };
+        };
+    };
+    list_simulation_rounds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                id: string;
+                /** @description Simulation id */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Round history with per-master decisions + reasoning, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimRoundDto"][];
+                };
+            };
+        };
+    };
+    run_simulation_round: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                id: string;
+                /** @description Simulation id */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The round result (leaderboard + per-master decisions) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimRoundResultDto"];
+                };
+            };
+            /** @description A round is already running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    set_simulation_schedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                id: string;
+                /** @description Simulation id */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetSimScheduleRequest"];
+            };
+        };
+        responses: {
+            /** @description The updated simulation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulationDto"];
+                };
+            };
+            /** @description Invalid cron expression */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

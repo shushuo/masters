@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Current state: Phase 0 + Phase 1 + Phase 2 (2a/2b/2c) + Phase 3a/3b (Study) + 3c (Recipes) + 3d (Scheduler) + 3e (Delivery) + 4a (Masters) + 4b (Teams + router) + 4c (Group chat) + 4d (External MCP) + 4e (Group streaming) + 4f (Multi-round) + 4g (Group tool visibility) + 4h (Portable bundles) + 4i (External ACP master agents) + Desktop UI (design system, full management UI, ACP selector, chat history, audit viewer, theme toggle, group max-rounds) + Masters sidebar (standalone/global masters + system templates + quick chat) + Hardening pass (loop robustness, i18n, event log, ACP gate) + Investing vertical slice 1 (assets+market servers, expert-team pack, ask→track loop, Watch UI) + slice 2 (proactive touch: weekly digest + mover sentinel recipes w/ silent-pass, briefings feed) + slice 3 (earnings sentinel on cninfo disclosures) + slice 4 (progressive ledger + FinCalc portfolio unlock) + 《大师》UI/UX redesign (investing-first IA, paper-and-ink design language, 问大师 home) + cloud daily-heartbeat consumption (本周市场三件事 card + cloud quote pack) implemented
+## Current state: Phase 0 + Phase 1 + Phase 2 (2a/2b/2c) + Phase 3a/3b (Study) + 3c (Recipes) + 3d (Scheduler) + 3e (Delivery) + 4a (Masters) + 4b (Teams + router) + 4c (Group chat) + 4d (External MCP) + 4e (Group streaming) + 4f (Multi-round) + 4g (Group tool visibility) + 4h (Portable bundles) + 4i (External ACP master agents) + Desktop UI (design system, full management UI, ACP selector, chat history, audit viewer, theme toggle, group max-rounds) + Masters sidebar (standalone/global masters + system templates + quick chat) + Hardening pass (loop robustness, i18n, event log, ACP gate) + Investing vertical slice 1 (assets+market servers, expert-team pack, ask→track loop, Watch UI) + slice 2 (proactive touch: weekly digest + mover sentinel recipes w/ silent-pass, briefings feed) + slice 3 (earnings sentinel on cninfo disclosures) + slice 4 (progressive ledger + FinCalc portfolio unlock) + 《大师》UI/UX redesign (investing-first IA, paper-and-ink design language, 问大师 home) + cloud daily-heartbeat consumption (本周市场三件事 card + cloud quote pack) + Simulation Investment Lab (模拟投资实验室: masters paper-trade under fixed conditions, manual/scheduled rounds) implemented
 
 **Phase 0 (Foundations)** and **Phase 1a** are in place (see `docs/08-roadmap.md` and
 `DEVELOPMENT.md`): a Rust Cargo workspace under `crates/` (`getmasters-proto`, `getmasters-core`,
@@ -492,6 +492,32 @@ bulletin is published, plus a cloud-sourced 大师一句 (local `quotes.ts` rema
 fallback). Integration test: the endpoint degrades to an empty payload when the cloud is
 unreachable; unit tests cover `map_cloud`. The masters-cloud side (snapshot job + bulletin/quote
 tables + `/api/snapshot/daily`) shipped in the cloud repo's C1–C4.
+**Simulation Investment Lab (模拟投资实验室; inspired by Alpha Arena + the RETuning paper
+arXiv 2510.21604):** user-configured masters compete in a **forward-in-time paper simulation** —
+each round they reason RETuning-style (framework → evidence → reflection → decision) and emit a
+**target allocation**; the deterministic engine settles at live EOD close prices (no historical
+series exists — this is live-forward, not a backtest). Built as ADR-0015 layers on the unchanged
+foundation, kept fully separate from the real `assets` ledger (ADR-0016). **Core** — migration
+**0024** (`simulations`/`sim_participants`/`sim_positions`/`sim_rounds`/`sim_decisions`/
+`sim_valuations` + `schedules.simulation_id`) + `getmasters-core::simlab` (pure `parse_targets`
+tolerant of full/half-width punctuation & `%`, `enforce_constraints` (universe/long-only/max-weight/
+cash-floor), `portfolio_nav`, `rebalance` w/ turnover-fee value-conservation, `return_pct`; 8 unit
+tests) + Store CRUD (assets-template `map_*`/COALESCE pattern; `claim_simulation` concurrency guard).
+Masters run **read-only** (existing `market.*`/`knowledge.*` tools) — no new gated write-tool.
+**Server** — `getmasters-server::simlab::run_round` (shared by manual + scheduled): one quote
+snapshot per round (fairness), parallel master dispatch via `master::run`, deterministic
+parse→enforce→rebalance→persist, an auto-added `__benchmark__` buy-and-hold line, per-decision
+reasoning + token capture; a `schedules.simulation_id` branch in `scheduler::run_due` reuses the
+Phase-3d/3e history + delivery. **HTTP** — `POST`/`GET`/`DELETE /projects/{id}/simulations(/{sid})`
++ `POST`/`GET .../rounds` + `GET .../leaderboard` + `PUT .../schedule`
+(`SimulationDto`/`CreateSimulationRequest`/`SimRoundResultDto`/`SimLeaderboardRowDto`/`SimRoundDto`/
+`SimDecisionDto`/`SetSimScheduleRequest`; openapi+schema.ts regenerated). **Desktop** — a
+first-class **模拟盘** nav view (`SimLab.tsx`; `View "simlab"`, distinct from the `lab` workbench):
+create-form (universe/cash/constraints/participant pick), leaderboard w/ CN gain-loss colors +
+equity sparkline, 运行一轮 + cron-preset 定时, round timeline with expandable RETuning reasoning +
+就此提问 prefill, fixed 模拟/非投资建议 footer. Integration tests (`tests/simlab.rs`, offline): the
+benchmark P&L loop across a price move + master hold-on-unparsed reasoning capture, and a
+`simulation_id` schedule firing through `scheduler::run_due`.
 **Deferred within the vertical:** unread state on briefings, JournalServer,
 sell/close flows + coached quarterly reviews (hypothetical returns live only there, D10), redaction
 mode, dual-source validation, screenshot ingestion (ADR-0018).
