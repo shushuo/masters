@@ -970,7 +970,13 @@ export class MastersClient {
       // `max_rounds` only applies to team-bound group sessions (Phase 4f); ignored otherwise.
       ws.send(JSON.stringify({ type: "send", content, max_rounds: maxRounds }));
     };
+    this.bindStream(ws, handlers);
+    return ws;
+  }
 
+  /** Wire a WebSocket's message/error dispatch to the stream handlers (shared by the session run
+   * stream and the simulation-round stream — both speak the same `ServerEvent` protocol). */
+  private bindStream(ws: WebSocket, handlers: StreamHandlers): void {
     ws.onmessage = (ev) => {
       const event = JSON.parse(ev.data as string) as ServerEvent;
       switch (event.type) {
@@ -1033,8 +1039,18 @@ export class MastersClient {
           break;
       }
     };
-
     ws.onerror = () => handlers.onError("websocket error");
+  }
+
+  /** Open a live simulation-round stream: the round starts on connect and each master's reasoning
+   * streams attributed via the group callbacks (onGroupStart/onMasterDelta/…/onGroupComplete). A
+   * `{type:"stop"}` or a socket close aborts the round. */
+  openSimStream(projectId: string, sid: string, handlers: StreamHandlers): WebSocket {
+    const url = `ws://127.0.0.1:${this.conn.port}/projects/${projectId}/simulations/${sid}/ws?token=${encodeURIComponent(
+      this.conn.token,
+    )}`;
+    const ws = new WebSocket(url);
+    this.bindStream(ws, handlers);
     return ws;
   }
 

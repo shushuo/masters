@@ -14,6 +14,7 @@ pub mod projects;
 pub mod recipes;
 pub mod schedules;
 pub mod sessions;
+pub mod sim_ws;
 pub mod simlab;
 pub mod settings;
 pub mod skills_global;

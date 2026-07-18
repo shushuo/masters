@@ -119,6 +119,10 @@ pub fn build_app(state: AppState) -> Router {
             "/projects/{id}/simulations/{sid}/reset",
             post(routes::simlab::reset),
         )
+        .route(
+            "/projects/{id}/simulations/{sid}/ws",
+            get(routes::sim_ws::handler),
+        )
         .route("/snapshot/daily", get(routes::snapshot::daily))
         .route(
             "/projects/{id}/study-plan",

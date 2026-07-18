@@ -2,7 +2,7 @@
 // User-configured masters compete under fixed conditions: each round they reason (framework →
 // evidence → decision) and emit a target allocation; the deterministic engine settles at live
 // close prices. Everything here is explicitly 模拟/假设 — never real trades, never advice.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlaskConical, MessageCircleQuestion, Plus, Play, Download, Trash2, X } from "lucide-react";
 import type {
   CreateSimulationRequest,
@@ -363,6 +363,13 @@ export default function SimLab({
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Live round stream (WS): per-master reasoning accumulating token-by-token.
+  const [live, setLive] = useState<{
+    round: number;
+    byAuthor: Record<string, { text: string; done: boolean }>;
+  } | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  useEffect(() => () => wsRef.current?.close(), []);
 
   const loadList = useCallback(
     async (pid: string) => {
@@ -433,26 +440,63 @@ export default function SimLab({
     }
   };
 
-  const runRound = async () => {
+  // Run a round with a live WebSocket stream: each master's reasoning appears token-by-token; the
+  // engine settles deterministically on the server, and we refresh the leaderboard + rounds when
+  // the round completes.
+  const runRound = () => {
     if (!projectId || !selected) return;
     const sid = selected.id;
-    setRunning(true);
     setError(null);
-    try {
-      // The round runs in the background (202); poll the sim until it settles from "running".
-      await client.runSimulationRound(projectId, sid);
-      for (let i = 0; i < 240; i++) {
-        const sim = await client.getSimulation(projectId, sid);
-        if (sim.state !== "running") break;
-        await new Promise((r) => setTimeout(r, 1500));
+    setRunning(true);
+    setLive({ round: 1, byAuthor: {} });
+    const patch = (author: string, fn: (s: { text: string; done: boolean }) => { text: string; done: boolean }) =>
+      setLive((cur) =>
+        cur
+          ? { ...cur, byAuthor: { ...cur.byAuthor, [author]: fn(cur.byAuthor[author] ?? { text: "", done: false }) } }
+          : cur,
+      );
+    const ws = client.openSimStream(projectId, sid, {
+      onDelta: () => {},
+      onComplete: () => {},
+      onError: (m) => {
+        setError(m);
+        setRunning(false);
+        setLive(null);
+        wsRef.current = null;
+      },
+      onGroupStart: (round, addressed) =>
+        setLive({ round, byAuthor: Object.fromEntries(addressed.map((a) => [a, { text: "", done: false }])) }),
+      onMasterDelta: (_r, author, text) => patch(author, (s) => ({ text: s.text + text, done: false })),
+      onMasterComplete: (_r, author) => patch(author, (s) => ({ ...s, done: true })),
+      onMasterError: (_r, author, message) =>
+        patch(author, (s) => ({ text: `${s.text}\n\n[错误] ${message}`, done: true })),
+      onGroupComplete: () => {
+        wsRef.current = null;
+        void (async () => {
+          await openDetail(sid);
+          await loadList(projectId);
+          setLive(null);
+          setRunning(false);
+        })();
+      },
+    });
+    wsRef.current = ws;
+  };
+
+  const stopRound = () => {
+    const ws = wsRef.current;
+    if (ws) {
+      try {
+        ws.send(JSON.stringify({ type: "stop" }));
+      } catch {
+        /* socket may already be closing */
       }
-      await openDetail(sid);
-      await loadList(projectId);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setRunning(false);
+      ws.close();
+      wsRef.current = null;
     }
+    setRunning(false);
+    setLive(null);
+    if (projectId && selected) void openDetail(selected.id);
   };
 
   const changeState = async (s: "active" | "paused" | "ended") => {
@@ -588,6 +632,11 @@ export default function SimLab({
                   <Play className="h-4 w-4" />
                   {running ? L("运行中…", "Running…") : L("运行一轮", "Run a round")}
                 </Button>
+                {running && (
+                  <Button variant="ghost" onClick={stopRound}>
+                    {L("停止", "Stop")}
+                  </Button>
+                )}
                 {selected.state !== "ended" && (
                   <Button
                     variant="ghost"
@@ -634,6 +683,37 @@ export default function SimLab({
                   </span>
                 )}
               </div>
+
+              {/* Live round stream */}
+              {live && (
+                <section className="space-y-2">
+                  <h3 className="text-sm font-medium text-muted">
+                    {L("本轮进行中 · 实时推理", "This round · live reasoning")}
+                  </h3>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {Object.entries(live.byAuthor).map(([author, s]) => (
+                      <Card key={author} className="p-3">
+                        <div className="flex items-center gap-2">
+                          <Face slug={author} size={24} />
+                          <span className="text-sm font-medium">{masterName(author)}</span>
+                          {s.done ? (
+                            <Badge className="ml-auto">{L("已完成", "done")}</Badge>
+                          ) : (
+                            <span className="ml-auto animate-pulse text-xs text-accent">▍</span>
+                          )}
+                        </div>
+                        <div className="mt-2 max-h-72 overflow-y-auto text-sm">
+                          {s.text ? (
+                            <Markdown text={s.text} />
+                          ) : (
+                            <span className="text-faint">{L("思考中…", "thinking…")}</span>
+                          )}
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </section>
+              )}
 
               {/* Leaderboard */}
               <section>

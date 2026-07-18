@@ -12,11 +12,18 @@
 //! `schedules.simulation_id` branch in `run_due`), mirroring `recipe::run_loaded`.
 
 use std::collections::{BTreeMap, HashMap};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use futures::future::join_all;
+use futures::StreamExt;
+use tokio::sync::mpsc::{self, UnboundedSender};
+use tokio::task::{AbortHandle, JoinHandle};
 
+use getmasters_core::agent::AgentEvent;
 use getmasters_core::market::{normalize_symbol, MarketData, QuoteView};
+
+use crate::group::GroupStreamEvent;
 use getmasters_core::simlab::{
     enforce_constraints, portfolio_nav, rebalance, return_pct, SimConstraints, BENCHMARK_SLUG,
 };
@@ -244,16 +251,39 @@ pub async fn run_round_claimed(
     outcome.map(|(_, result)| result)
 }
 
-async fn run_round_inner(
+/// One master's captured reply for the deterministic settle (raw reasoning text + provenance).
+struct MasterReply {
+    raw: String,
+    session_id: Option<String>,
+    tokens: Option<i64>,
+}
+
+/// Everything a round needs after the shared preparation (one fair snapshot + participant state).
+struct RoundPrep {
+    round_id: String,
+    round_no: i64,
+    snaps: Vec<Snapshot>,
+    prices: BTreeMap<String, f64>,
+    quotes: BTreeMap<String, QuoteView>,
+    quote_date: Option<String>,
+    universe: Vec<String>,
+    cons: SimConstraints,
+    cons_dto: SimConstraintsDto,
+    news: BTreeMap<String, Vec<getmasters_core::store::AnnouncementRow>>,
+}
+
+/// Phases 1–2 (shared by the synchronous and streaming round paths): take one fair quote +
+/// disclosure snapshot for the whole universe, insert the round row, and capture each participant's
+/// pre-round portfolio state.
+async fn prepare_round(
     state: &AppState,
     store: &Store,
     sim: &SimulationRow,
-) -> Result<(i64, SimRoundResultDto), String> {
+) -> Result<RoundPrep, String> {
     let universe = universe_of(sim);
     let cons_dto = constraints_of(sim);
     let cons = to_core_constraints(&cons_dto);
 
-    // 1. Snapshot the whole universe once (fairness: every master sees the same prices).
     let market = MarketData::new(store.clone(), state.market.clone());
     let now = now_ms();
     let mut quotes: BTreeMap<String, QuoteView> = BTreeMap::new();
@@ -277,9 +307,8 @@ async fn run_round_inner(
         }
     }
 
-    // Recent disclosures as shared evidence (RETuning multi-source). Best-effort + fetched once per
-    // round so every master weighs the same material; sources without a disclosure channel degrade
-    // to empty. Capped per symbol to keep briefs bounded.
+    // Recent disclosures as shared evidence (RETuning multi-source); best-effort, fetched once per
+    // round so every master weighs the same material. Capped per symbol to keep briefs bounded.
     let mut news: BTreeMap<String, Vec<getmasters_core::store::AnnouncementRow>> = BTreeMap::new();
     for sym in &universe {
         if let Ok(list) = market.announcements(sym, ANNOUNCE_DAYS, now).await {
@@ -294,7 +323,6 @@ async fn run_round_inner(
         .insert_sim_round(&sim.id, round_no, quote_date.as_deref(), "ok")
         .map_err(|e| e.to_string())?;
 
-    // 2. Per-participant pre-round snapshots.
     let participants = store
         .list_sim_participants(&sim.id)
         .map_err(|e| e.to_string())?;
@@ -316,33 +344,45 @@ async fn run_round_inner(
         });
     }
 
-    // 3. Dispatch masters in parallel (the benchmark is deterministic, no LLM). Each returns its
-    //    raw reply; the deterministic apply happens sequentially afterwards.
-    let briefs: Vec<(usize, String)> = snaps
-        .iter()
-        .enumerate()
-        .filter(|(_, s)| s.slug != BENCHMARK_SLUG)
-        .map(|(i, s)| (i, build_brief(sim, &cons_dto, s, &universe, &quotes, &news)))
-        .collect();
-    let runs = briefs.into_iter().map(|(i, brief)| {
-        let slug = snaps[i].slug.clone();
-        let title = format!("sim:{}:{}", sim.id, slug);
-        async move {
-            let r = crate::master::run_titled(state, &sim.project_id, &slug, &brief, &title).await;
-            (i, r)
-        }
-    });
-    let results = join_all(runs).await;
-    let mut replies: HashMap<usize, Result<getmasters_proto::MasterRunResult, String>> =
-        results.into_iter().collect();
+    Ok(RoundPrep {
+        round_id,
+        round_no,
+        snaps,
+        prices,
+        quotes,
+        quote_date,
+        universe,
+        cons,
+        cons_dto,
+        news,
+    })
+}
 
-    // 4. Apply each participant's decision deterministically + persist.
+/// Phase 4 (shared): apply each participant's decision deterministically against `prep`, persist the
+/// decisions + valuations, and build the round result. `replies` is keyed by snapshot index (the
+/// benchmark participant has no entry — it's settled as a fixed buy-and-hold). Pure of the LLM: the
+/// engine does the money-math (NFR-INV-1).
+fn settle_round(
+    store: &Store,
+    sim: &SimulationRow,
+    prep: &RoundPrep,
+    mut replies: HashMap<usize, Result<MasterReply, String>>,
+) -> (i64, SimRoundResultDto) {
+    let RoundPrep {
+        round_id,
+        round_no,
+        snaps,
+        prices,
+        universe,
+        cons,
+        quote_date,
+        ..
+    } = prep;
     let starting = sim.starting_cash;
     let mut applied: Vec<Applied> = Vec::new();
     for (i, snap) in snaps.iter().enumerate() {
         let is_bench = snap.slug == BENCHMARK_SLUG;
 
-        // Resolve the target weights + captured reasoning for this participant.
         let (targets_clean, parsed, reasoning, session_id, tokens, summary) = if is_bench {
             let mut t = BTreeMap::new();
             if let Some(b) = &cons.benchmark {
@@ -353,35 +393,31 @@ async fn run_round_inner(
             (t, true, None, None, None, Some("基准：买入持有".to_string()))
         } else {
             match replies.remove(&i) {
-                Some(Ok(run)) => {
-                    let raw = message_text(&run.message.content);
-                    match getmasters_core::simlab::parse_targets(&raw) {
-                        Some(raw_targets) => {
-                            let (clean, dropped) =
-                                enforce_constraints(&raw_targets, &universe, &cons);
-                            let mut summary = summarize_targets(&clean);
-                            if !dropped.is_empty() {
-                                summary.push_str(&format!("（已忽略池外/越界：{}）", dropped.join("、")));
-                            }
-                            (
-                                clean,
-                                true,
-                                Some(raw),
-                                Some(run.session_id),
-                                run.message.token_usage,
-                                Some(summary),
-                            )
+                Some(Ok(reply)) => match getmasters_core::simlab::parse_targets(&reply.raw) {
+                    Some(raw_targets) => {
+                        let (clean, dropped) = enforce_constraints(&raw_targets, universe, cons);
+                        let mut summary = summarize_targets(&clean);
+                        if !dropped.is_empty() {
+                            summary.push_str(&format!("（已忽略池外/越界：{}）", dropped.join("、")));
                         }
-                        None => (
-                            snap.positions_targets_placeholder(),
-                            false,
-                            Some(raw),
-                            Some(run.session_id),
-                            run.message.token_usage,
-                            Some("未能解析决策，本轮维持不动".to_string()),
-                        ),
+                        (
+                            clean,
+                            true,
+                            Some(reply.raw),
+                            reply.session_id,
+                            reply.tokens,
+                            Some(summary),
+                        )
                     }
-                }
+                    None => (
+                        BTreeMap::new(),
+                        false,
+                        Some(reply.raw),
+                        reply.session_id,
+                        reply.tokens,
+                        Some("未能解析决策，本轮维持不动".to_string()),
+                    ),
+                },
                 Some(Err(e)) => (
                     BTreeMap::new(),
                     false,
@@ -395,36 +431,34 @@ async fn run_round_inner(
         };
 
         // Rebalance (parsed decision) or hold (unparsed/failed → keep positions & cash).
-        let (new_positions, new_cash, unvalued) = if parsed && (!targets_clean.is_empty() || is_bench)
+        let (new_positions, new_cash, unvalued) = if parsed
+            && (!targets_clean.is_empty() || is_bench)
         {
-            let r = rebalance(&snap.positions, snap.nav, &targets_clean, &prices, cons.fee_bps);
-            let positions: Vec<(String, f64, Option<f64>)> = r.positions;
-            (positions, r.cash, r.unvalued_count)
+            let r = rebalance(&snap.positions, snap.nav, &targets_clean, prices, cons.fee_bps);
+            (r.positions, r.cash, r.unvalued_count)
         } else {
             let positions: Vec<(String, f64, Option<f64>)> = snap
                 .positions
                 .iter()
                 .map(|(s, q)| (s.clone(), *q, None))
                 .collect();
-            let (_, unvalued) = portfolio_nav(snap.cash, &snap.positions, &prices);
+            let (_, unvalued) = portfolio_nav(snap.cash, &snap.positions, prices);
             (positions, snap.cash, unvalued)
         };
 
-        // Persist positions + cash.
         let _ = store.replace_sim_positions(&snap.participant_id, &new_positions);
         let _ = store.set_sim_participant_cash(&snap.participant_id, new_cash);
 
-        // Post-round valuation.
         let post_map: BTreeMap<String, f64> = new_positions
             .iter()
             .map(|(s, q, _)| (s.clone(), *q))
             .collect();
-        let (nav, _) = portfolio_nav(new_cash, &post_map, &prices);
+        let (nav, _) = portfolio_nav(new_cash, &post_map, prices);
         let ret = return_pct(nav, starting);
 
         let targets_json = serde_json::to_string(&targets_clean).ok();
         let _ = store.insert_sim_decision(
-            &round_id,
+            round_id,
             &snap.participant_id,
             session_id.as_deref(),
             targets_json.as_deref(),
@@ -434,7 +468,7 @@ async fn run_round_inner(
             tokens,
         );
         let _ = store.insert_sim_valuation(
-            &round_id,
+            round_id,
             &snap.participant_id,
             Some(nav),
             new_cash,
@@ -459,14 +493,13 @@ async fn run_round_inner(
                 nav: Some(nav),
                 cash: new_cash,
                 return_pct: ret,
-                alpha: None, // computed on read paths (needs the whole field)
-                equity: Vec::new(), // filled by the leaderboard reader on read paths
+                alpha: None,
+                equity: Vec::new(),
                 unvalued_count: unvalued as i64,
             },
         });
     }
 
-    // Leaderboard sorted by cumulative return (desc); benchmark stays in the list.
     let mut leaderboard: Vec<SimLeaderboardRowDto> =
         applied.iter().map(|a| a.leaderboard.clone()).collect();
     leaderboard.sort_by(|a, b| {
@@ -477,23 +510,240 @@ async fn run_round_inner(
     });
     let decisions: Vec<SimDecisionDto> = applied.into_iter().map(|a| a.decision).collect();
 
-    Ok((
-        round_no,
+    (
+        *round_no,
         SimRoundResultDto {
-            round_no,
-            quote_date,
+            round_no: *round_no,
+            quote_date: quote_date.clone(),
             leaderboard,
             decisions,
         },
-    ))
+    )
 }
 
-impl Snapshot {
-    /// A "hold" placeholder isn't a real target set — held participants keep their book untouched,
-    /// so this returns an empty map (the caller treats `parsed=false` as hold).
-    fn positions_targets_placeholder(&self) -> BTreeMap<String, f64> {
-        BTreeMap::new()
+async fn run_round_inner(
+    state: &AppState,
+    store: &Store,
+    sim: &SimulationRow,
+) -> Result<(i64, SimRoundResultDto), String> {
+    let prep = prepare_round(state, store, sim).await?;
+
+    // Dispatch masters in parallel (the benchmark is deterministic, no LLM); settle afterwards.
+    let briefs: Vec<(usize, String)> = prep
+        .snaps
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| s.slug != BENCHMARK_SLUG)
+        .map(|(i, s)| {
+            (
+                i,
+                build_brief(sim, &prep.cons_dto, s, &prep.universe, &prep.quotes, &prep.news),
+            )
+        })
+        .collect();
+    let runs = briefs.into_iter().map(|(i, brief)| {
+        let slug = prep.snaps[i].slug.clone();
+        let title = format!("sim:{}:{}", sim.id, slug);
+        async move {
+            let r = crate::master::run_titled(state, &sim.project_id, &slug, &brief, &title).await;
+            (i, r)
+        }
+    });
+    let replies: HashMap<usize, Result<MasterReply, String>> = join_all(runs)
+        .await
+        .into_iter()
+        .map(|(i, r)| {
+            let reply = r.map(|run| MasterReply {
+                raw: message_text(&run.message.content),
+                session_id: Some(run.session_id),
+                tokens: run.message.token_usage,
+            });
+            (i, reply)
+        })
+        .collect();
+
+    Ok(settle_round(store, sim, &prep, replies))
+}
+
+// --- Live streaming of a round (WS) --------------------------------------------
+
+/// A live simulation round: a channel of group-shaped stream events (reusing [`GroupStreamEvent`]),
+/// that closes when the round is fully settled, plus the in-flight task handles and the sim id so a
+/// Stop/disconnect can abort them and recover the sim's `running` state.
+pub struct SimStreamTurn {
+    pub events: mpsc::UnboundedReceiver<GroupStreamEvent>,
+    pub aborts: Arc<Mutex<Vec<AbortHandle>>>,
+    pub simulation_id: String,
+}
+
+/// Start a streamed round: claim the sim, then spawn an orchestrator that streams each master's
+/// reasoning into the channel and settles the round deterministically once they finish. Returns
+/// immediately (the WS handler drives it). Mirrors [`crate::group::stream_post`].
+pub async fn stream_round(state: &AppState, sim_id: &str) -> Result<SimStreamTurn, String> {
+    let store = state.agent.store().clone();
+    let sim = store
+        .get_simulation(sim_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "simulation not found".to_string())?;
+    if sim.state == "ended" {
+        return Err("simulation has ended".into());
     }
+    if !store.claim_simulation(sim_id).map_err(|e| e.to_string())? {
+        return Err("该模拟盘正在运行本轮，请稍候".into());
+    }
+
+    let (tx, rx) = mpsc::unbounded_channel::<GroupStreamEvent>();
+    let aborts: Arc<Mutex<Vec<AbortHandle>>> = Arc::new(Mutex::new(Vec::new()));
+    let aborts_for_task = aborts.clone();
+    let state = state.clone();
+    let orchestrator = tokio::spawn(async move {
+        run_round_streaming(state, sim, aborts_for_task, tx).await;
+    });
+    aborts.lock().unwrap().push(orchestrator.abort_handle());
+
+    Ok(SimStreamTurn {
+        events: rx,
+        aborts,
+        simulation_id: sim_id.to_string(),
+    })
+}
+
+/// The streaming orchestrator: prepare the round, emit `RoundStart`, stream each non-benchmark
+/// master in parallel into `tx`, await them all, then settle deterministically and release the sim.
+/// Dropping `tx` at the end closes the stream (the WS then emits `GroupComplete`).
+async fn run_round_streaming(
+    state: AppState,
+    sim: SimulationRow,
+    aborts: Arc<Mutex<Vec<AbortHandle>>>,
+    tx: UnboundedSender<GroupStreamEvent>,
+) {
+    let store = state.agent.store().clone();
+    let prep = match prepare_round(&state, &store, &sim).await {
+        Ok(p) => p,
+        Err(e) => {
+            let _ = tx.send(GroupStreamEvent::Master {
+                round: 1,
+                author: "__sim__".into(),
+                event: AgentEvent::Error(e),
+            });
+            let _ = store.set_simulation_state(&sim.id, "active");
+            return;
+        }
+    };
+
+    let addressed: Vec<String> = prep
+        .snaps
+        .iter()
+        .filter(|s| s.slug != BENCHMARK_SLUG)
+        .map(|s| s.slug.clone())
+        .collect();
+    let _ = tx.send(GroupStreamEvent::RoundStart { round: 1, addressed });
+
+    let mut handles: Vec<(usize, JoinHandle<Result<MasterReply, String>>)> = Vec::new();
+    for (i, snap) in prep.snaps.iter().enumerate() {
+        if snap.slug == BENCHMARK_SLUG {
+            continue;
+        }
+        let brief = build_brief(&sim, &prep.cons_dto, snap, &prep.universe, &prep.quotes, &prep.news);
+        let state = state.clone();
+        let project_id = sim.project_id.clone();
+        let sim_id = sim.id.clone();
+        let slug = snap.slug.clone();
+        let tx = tx.clone();
+        let handle =
+            tokio::spawn(
+                async move { stream_sim_master(&state, &project_id, &sim_id, &slug, &brief, tx).await },
+            );
+        aborts.lock().unwrap().push(handle.abort_handle());
+        handles.push((i, handle));
+    }
+
+    let mut replies: HashMap<usize, Result<MasterReply, String>> = HashMap::new();
+    for (i, handle) in handles {
+        let r = handle
+            .await
+            .unwrap_or_else(|_| Err("master task aborted".into()));
+        replies.insert(i, r);
+    }
+
+    let (round_no, _result) = settle_round(&store, &sim, &prep, replies);
+    let _ = store.finish_simulation_round(&sim.id, round_no);
+    // tx is dropped here → the channel closes → the WS emits GroupComplete.
+}
+
+/// Stream one master's reasoning for a sim round into `tx` (tagged `round = 1`, `author = slug`),
+/// returning its captured reply for the deterministic settle. The `sim:<sid>:<slug>` session is the
+/// durable record. Mirrors [`crate::group::stream_master`] without the group-transcript post-back.
+async fn stream_sim_master(
+    state: &AppState,
+    project_id: &str,
+    sim_id: &str,
+    slug: &str,
+    brief: &str,
+    tx: UnboundedSender<GroupStreamEvent>,
+) -> Result<MasterReply, String> {
+    let send = |event: AgentEvent| {
+        let _ = tx.send(GroupStreamEvent::Master {
+            round: 1,
+            author: slug.to_string(),
+            event,
+        });
+    };
+
+    let master = match crate::master::load_master_any(state, project_id, slug) {
+        Ok(Some(m)) => m,
+        Ok(None) => {
+            let e = format!("master '{slug}' not found");
+            send(AgentEvent::Error(e.clone()));
+            return Err(e);
+        }
+        Err(e) => {
+            send(AgentEvent::Error(e.clone()));
+            return Err(e);
+        }
+    };
+
+    let store = state.agent.store();
+    let session = match store.create_session(Some(project_id), Some(&format!("sim:{sim_id}:{slug}"))) {
+        Ok(s) => s,
+        Err(e) => {
+            let e = e.to_string();
+            send(AgentEvent::Error(e.clone()));
+            return Err(e);
+        }
+    };
+
+    let mut stream = match crate::master::run_master_stream(
+        state, project_id, &session.id, slug, &master, Some(brief), &[],
+    )
+    .await
+    {
+        Ok(s) => s,
+        Err(e) => {
+            send(AgentEvent::Error(e.clone()));
+            return Err(e);
+        }
+    };
+
+    let mut reply: Option<MasterReply> = None;
+    while let Some(ev) = stream.next().await {
+        match ev {
+            AgentEvent::Complete { message_id } => {
+                let (raw, tokens) = store
+                    .get_message(&message_id)
+                    .map(|m| (message_text(&m.content), m.token_usage))
+                    .unwrap_or_default();
+                send(AgentEvent::Complete { message_id });
+                reply = Some(MasterReply {
+                    raw,
+                    session_id: Some(session.id.clone()),
+                    tokens,
+                });
+            }
+            other => send(other),
+        }
+    }
+    reply.ok_or_else(|| "master produced no reply".to_string())
 }
 
 /// A compact "sh600519 40% · sz000001 20%" summary of target weights.

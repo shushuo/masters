@@ -343,6 +343,62 @@ async fn round_loop_benchmark_pnl_and_master_hold() {
 }
 
 #[tokio::test]
+async fn streaming_round_emits_events_and_settles() {
+    use getmasters_core::agent::AgentEvent;
+    use getmasters_server::group::GroupStreamEvent;
+
+    let dir = temp_dir();
+    let store = Store::open_in_memory().unwrap();
+    let fetcher = Arc::new(FixtureFetcher::single("sh600519", "贵州茅台", 1700.0));
+    let state = state_with(&store, &dir, fetcher);
+    let pid = store.create_project("sim-proj", None).unwrap();
+    state
+        .global_master_store()
+        .create_with_slug("trader", &a_master("交易员"))
+        .unwrap();
+
+    let universe = serde_json::to_string(&vec!["sh600519"]).unwrap();
+    let sid = store
+        .create_simulation(&pid, "流式盘", None, &universe, 100_000.0, None)
+        .unwrap();
+    store.add_sim_participant(&sid, "trader", 100_000.0).unwrap();
+
+    // Drive the streaming orchestrator directly (no real WebSocket needed) and drain its channel.
+    let mut turn = getmasters_server::simlab::stream_round(&state, &sid).await.unwrap();
+    let mut saw_round_start = false;
+    let mut saw_master_delta = false;
+    let mut saw_master_complete = false;
+    while let Some(ev) = turn.events.recv().await {
+        match ev {
+            GroupStreamEvent::RoundStart { round, addressed } => {
+                assert_eq!(round, 1);
+                assert!(addressed.contains(&"trader".to_string()));
+                saw_round_start = true;
+            }
+            GroupStreamEvent::Master { author, event, .. } => {
+                assert_eq!(author, "trader");
+                match event {
+                    AgentEvent::Delta(_) => saw_master_delta = true,
+                    AgentEvent::Complete { .. } => saw_master_complete = true,
+                    _ => {}
+                }
+            }
+        }
+    }
+    assert!(saw_round_start, "emitted RoundStart");
+    assert!(saw_master_delta, "streamed the master's reasoning tokens");
+    assert!(saw_master_complete, "emitted the master's completion");
+
+    // The channel closing means the round settled: round advanced + state released.
+    let sim = store.get_simulation(&sid).unwrap().unwrap();
+    assert_eq!(sim.round_no, 1);
+    assert_eq!(sim.state, "active");
+    let rounds = store.list_sim_rounds(&sid).unwrap();
+    assert_eq!(rounds.len(), 1);
+    assert_eq!(store.list_round_decisions(&rounds[0].id).unwrap().len(), 1);
+}
+
+#[tokio::test]
 async fn scheduled_round_fires_through_run_due() {
     let dir = temp_dir();
     let store = Store::open_in_memory().unwrap();
