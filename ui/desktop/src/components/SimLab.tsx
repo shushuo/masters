@@ -114,8 +114,15 @@ function Leaderboard({ rows }: { rows: SimLeaderboardRowDto[] }) {
             </div>
           </div>
           <Sparkline series={r.equity ?? []} />
-          <div className="w-24 text-right text-base font-semibold">
-            <ReturnText v={r.return_pct} />
+          <div className="w-28 text-right">
+            <div className="text-base font-semibold">
+              <ReturnText v={r.return_pct} />
+            </div>
+            {r.alpha != null && (
+              <div className="text-xs text-muted">
+                {L("超额", "α")} <ReturnText v={r.alpha} className="text-xs" />
+              </div>
+            )}
           </div>
         </div>
       ))}
@@ -480,6 +487,21 @@ export default function SimLab({
     await loadList(projectId);
   };
 
+  const resetSim = async () => {
+    if (!projectId || !selected) return;
+    if (!confirm(L("重置将清空全部轮次与持仓，回到第 0 轮（保留配置）。确定？", "Reset clears all rounds and holdings back to round 0 (config kept). Continue?"))) {
+      return;
+    }
+    try {
+      const sim = await client.resetSimulation(projectId, selected.id);
+      setSelected(sim);
+      setRounds([]);
+      await loadList(projectId);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   const currentPreset = useMemo(() => {
     const cron = selected?.schedule_cron ?? null;
     return SCHEDULE_PRESETS.find((p) => p.cron === cron)?.key ?? "off";
@@ -562,6 +584,11 @@ export default function SimLab({
                 {selected.state !== "ended" && (
                   <Button variant="ghost" disabled={running} onClick={() => changeState("ended")}>
                     {L("结束", "End")}
+                  </Button>
+                )}
+                {selected.round_no > 0 && (
+                  <Button variant="ghost" disabled={running} onClick={resetSim}>
+                    {L("重置", "Reset")}
                   </Button>
                 )}
                 <label className="flex items-center gap-2 text-sm text-muted">

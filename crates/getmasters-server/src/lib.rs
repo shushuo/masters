@@ -111,6 +111,10 @@ pub fn build_app(state: AppState) -> Router {
             "/projects/{id}/simulations/{sid}/state/{state}",
             axum::routing::put(routes::simlab::set_state),
         )
+        .route(
+            "/projects/{id}/simulations/{sid}/reset",
+            post(routes::simlab::reset),
+        )
         .route("/snapshot/daily", get(routes::snapshot::daily))
         .route(
             "/projects/{id}/study-plan",

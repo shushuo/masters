@@ -2703,6 +2703,35 @@ impl Store {
         Ok(())
     }
 
+    /// Reset a simulation back to round 0 under the same conditions: clear all rounds (cascades
+    /// decisions + valuations), empty every participant's positions, restore their cash to the
+    /// starting cash, and set `round_no = 0`, `state = 'active'`. The config (universe/constraints/
+    /// participants) is kept — this is "rerun the experiment", not "delete it".
+    pub fn reset_simulation(&self, id: &str) -> Result<()> {
+        let conn = self.lock();
+        let ts = now_ms();
+        let starting: f64 = conn.query_row(
+            "SELECT starting_cash FROM simulations WHERE id = ?1",
+            [id],
+            |r| r.get(0),
+        )?;
+        conn.execute("DELETE FROM sim_rounds WHERE simulation_id = ?1", [id])?;
+        conn.execute(
+            "DELETE FROM sim_positions WHERE participant_id IN
+                (SELECT id FROM sim_participants WHERE simulation_id = ?1)",
+            [id],
+        )?;
+        conn.execute(
+            "UPDATE sim_participants SET cash = ?2, updated_at = ?3 WHERE simulation_id = ?1",
+            rusqlite::params![id, starting, ts],
+        )?;
+        conn.execute(
+            "UPDATE simulations SET round_no = 0, state = 'active', updated_at = ?2 WHERE id = ?1",
+            rusqlite::params![id, ts],
+        )?;
+        Ok(())
+    }
+
     /// Delete a simulation (cascades participants/positions/rounds/decisions/valuations).
     pub fn delete_simulation(&self, id: &str) -> Result<()> {
         let conn = self.lock();

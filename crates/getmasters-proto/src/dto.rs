@@ -1050,6 +1050,10 @@ pub struct SimLeaderboardRowDto {
     /// Cumulative return vs. starting cash (0.1 = +10%).
     #[serde(default)]
     pub return_pct: Option<f64>,
+    /// Excess return over the benchmark line (this row's return − the benchmark's), when a
+    /// benchmark participant exists. `None` for the benchmark itself and when there is none.
+    #[serde(default)]
+    pub alpha: Option<f64>,
     /// Cumulative-return series across rounds (oldest first) — the equity sparkline.
     #[serde(default)]
     pub equity: Vec<f64>,

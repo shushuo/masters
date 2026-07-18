@@ -628,6 +628,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{id}/simulations/{sid}/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reset_simulation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{id}/simulations/{sid}/rounds": {
         parameters: {
             query?: never;
@@ -2088,6 +2104,12 @@ export interface components {
         };
         /** @description One participant's standing on the leaderboard (latest valuation). */
         SimLeaderboardRowDto: {
+            /**
+             * Format: double
+             * @description Excess return over the benchmark line (this row's return − the benchmark's), when a
+             *     benchmark participant exists. `None` for the benchmark itself and when there is none.
+             */
+            alpha?: number | null;
             /** Format: double */
             cash: number;
             /** @description Cumulative-return series across rounds (oldest first) — the equity sparkline. */
@@ -3501,6 +3523,38 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SimLeaderboardRowDto"][];
                 };
+            };
+        };
+    };
+    reset_simulation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                id: string;
+                /** @description Simulation id */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The simulation reset to round 0 (config kept) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulationDto"];
+                };
+            };
+            /** @description A round is in flight */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

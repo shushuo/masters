@@ -455,6 +455,7 @@ async fn run_round_inner(
                 nav: Some(nav),
                 cash: new_cash,
                 return_pct: ret,
+                alpha: None, // computed on read paths (needs the whole field)
                 equity: Vec::new(), // filled by the leaderboard reader on read paths
                 unvalued_count: unvalued as i64,
             },
@@ -529,9 +530,23 @@ pub fn leaderboard(store: &Store, sim_id: &str) -> Result<Vec<SimLeaderboardRowD
             nav: latest.as_ref().and_then(|v| v.nav).or(Some(sim.starting_cash)),
             cash: latest.as_ref().map(|v| v.cash).unwrap_or(p.cash),
             return_pct: latest.as_ref().and_then(|v| v.return_pct).or(Some(0.0)),
+            alpha: None,
             equity,
             unvalued_count: latest.as_ref().map(|v| v.unvalued_count).unwrap_or(0),
         });
+    }
+    // Excess return over the benchmark line (if one is in the field): each master's return minus
+    // the benchmark's. The benchmark row itself carries no alpha.
+    let bench_return = rows
+        .iter()
+        .find(|r| r.master_slug == BENCHMARK_SLUG)
+        .and_then(|r| r.return_pct);
+    if let Some(bench) = bench_return {
+        for r in &mut rows {
+            if r.master_slug != BENCHMARK_SLUG {
+                r.alpha = r.return_pct.map(|ret| ret - bench);
+            }
+        }
     }
     rows.sort_by(|a, b| {
         b.return_pct

@@ -281,6 +281,47 @@ async fn round_loop_benchmark_pnl_and_master_hold() {
         .await
         .unwrap();
     assert_eq!(resumed.state, "active");
+
+    // Benchmark alpha: the trader (all cash, flat) trails the +10% benchmark by ~ -10%.
+    let after_lb: Vec<SimLeaderboardRowDto> = client
+        .get(format!("{base}/projects/{pid}/simulations/{sid}/leaderboard"))
+        .bearer_auth(TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let trader_row = after_lb.iter().find(|r| r.master_slug == "trader").unwrap();
+    assert!(
+        (trader_row.alpha.unwrap() + 0.10).abs() < 1e-3,
+        "trader alpha ~ -10% vs benchmark, got {:?}",
+        trader_row.alpha
+    );
+
+    // Reset: back to round 0 under the same conditions (config + participants kept).
+    let reset: SimulationDto = client
+        .post(format!("{base}/projects/{pid}/simulations/{sid}/reset"))
+        .bearer_auth(TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(reset.round_no, 0);
+    assert_eq!(reset.state, "active");
+    assert_eq!(reset.participants.len(), 2, "participants kept");
+    let rounds_after: Vec<SimRoundDto> = client
+        .get(format!("{base}/projects/{pid}/simulations/{sid}/rounds"))
+        .bearer_auth(TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(rounds_after.is_empty(), "rounds cleared on reset");
 }
 
 #[tokio::test]

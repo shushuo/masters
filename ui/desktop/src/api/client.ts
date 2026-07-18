@@ -386,6 +386,16 @@ export class MastersClient {
     return res.json();
   }
 
+  /** Reset a simulation to round 0 under the same conditions (rerun the experiment). */
+  async resetSimulation(projectId: string, sid: string): Promise<SimulationDto> {
+    const res = await fetch(
+      `${this.base()}/projects/${projectId}/simulations/${sid}/reset`,
+      { method: "POST", headers: this.headers() },
+    );
+    if (!res.ok) throw new Error(`resetSimulation failed: ${res.status} ${await res.text()}`);
+    return res.json();
+  }
+
   /** Round history with per-master decisions + reasoning (newest first). */
   async listSimulationRounds(projectId: string, sid: string): Promise<SimRoundDto[]> {
     const res = await fetch(

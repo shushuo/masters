@@ -272,6 +272,44 @@ pub async fn set_state(
 }
 
 #[utoipa::path(
+    post,
+    path = "/projects/{id}/simulations/{sid}/reset",
+    operation_id = "reset_simulation",
+    params(
+        ("id" = String, Path, description = "Project id"),
+        ("sid" = String, Path, description = "Simulation id")
+    ),
+    responses(
+        (status = 200, description = "The simulation reset to round 0 (config kept)", body = SimulationDto),
+        (status = 409, description = "A round is in flight")
+    ),
+    tag = "simlab"
+)]
+pub async fn reset(
+    State(state): State<AppState>,
+    Path((id, sid)): Path<(String, String)>,
+) -> Result<Json<SimulationDto>, AppError> {
+    let sim = load_owned(&state, &id, &sid)?;
+    if sim.state == "running" {
+        return Err(AppError::new(StatusCode::CONFLICT, "本轮进行中，请稍候再重置"));
+    }
+    let store = state.agent.store();
+    // Rounds cascade their decisions/valuations; also sweep the per-round run sessions.
+    if let Ok(sessions) = store.session_ids_titled_like(&format!("sim:{sid}:%")) {
+        for s in &sessions {
+            let _ = store.delete_session(s);
+        }
+    }
+    store.reset_simulation(&sid)?;
+    let sim = store
+        .get_simulation(&sid)?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, "simulation not found"))?;
+    crate::simlab::to_dto(store, &sim)
+        .map(Json)
+        .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e))
+}
+
+#[utoipa::path(
     get,
     path = "/projects/{id}/simulations/{sid}/rounds",
     operation_id = "list_simulation_rounds",

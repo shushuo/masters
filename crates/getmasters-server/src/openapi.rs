@@ -69,6 +69,7 @@ use getmasters_proto::{
         crate::routes::simlab::leaderboard,
         crate::routes::simlab::set_schedule,
         crate::routes::simlab::set_state,
+        crate::routes::simlab::reset,
         crate::routes::snapshot::daily,
         crate::routes::recipes::save,
         crate::routes::recipes::list,
