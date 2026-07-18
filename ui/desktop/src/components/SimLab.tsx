@@ -3,7 +3,7 @@
 // evidence → decision) and emit a target allocation; the deterministic engine settles at live
 // close prices. Everything here is explicitly 模拟/假设 — never real trades, never advice.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FlaskConical, MessageCircleQuestion, Plus, Play, Trash2, X } from "lucide-react";
+import { FlaskConical, MessageCircleQuestion, Plus, Play, Download, Trash2, X } from "lucide-react";
 import type {
   CreateSimulationRequest,
   MasterSummaryDto,
@@ -487,6 +487,22 @@ export default function SimLab({
     await loadList(projectId);
   };
 
+  const exportReport = async () => {
+    if (!projectId || !selected) return;
+    try {
+      const { markdown } = await client.getSimulationReport(projectId, selected.id);
+      const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${selected.name.replace(/[\\/:*?"<>|]/g, "_")}-模拟报告.md`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   const resetSim = async () => {
     if (!projectId || !selected) return;
     if (!confirm(L("重置将清空全部轮次与持仓，回到第 0 轮（保留配置）。确定？", "Reset clears all rounds and holdings back to round 0 (config kept). Continue?"))) {
@@ -584,6 +600,11 @@ export default function SimLab({
                 {selected.state !== "ended" && (
                   <Button variant="ghost" disabled={running} onClick={() => changeState("ended")}>
                     {L("结束", "End")}
+                  </Button>
+                )}
+                {selected.round_no > 0 && (
+                  <Button variant="ghost" onClick={exportReport}>
+                    <Download className="h-4 w-4" /> {L("导出报告", "Export")}
                   </Button>
                 )}
                 {selected.round_no > 0 && (

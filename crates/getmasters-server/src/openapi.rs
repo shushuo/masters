@@ -18,9 +18,9 @@ use getmasters_proto::{
     ScheduledRunDto, SecretUpdate, SendMessageRequest, ServerEvent, SessionDto,
     SetConnectorEnabledRequest, SetExtensionRequest, SetInstructionsRequest, SetScheduleRequest,
     SetSimScheduleRequest, SettingsDto, SettingsUpdate, SimConstraintsDto, SimDecisionDto,
-    SimLeaderboardRowDto, SimRoundDto, SimRoundResultDto, SimulationDto, CreateSimulationRequest,
-    SkillDto, StartGroupSessionRequest, StudyPlanDto, TeamBundle, TeamDto, TeamRunResult,
-    TeamSummaryDto,
+    SimLeaderboardRowDto, SimReportDto, SimRoundDto, SimRoundResultDto, SimulationDto,
+    CreateSimulationRequest, SkillDto, StartGroupSessionRequest, StudyPlanDto, TeamBundle, TeamDto,
+    TeamRunResult, TeamSummaryDto,
 };
 
 #[derive(OpenApi)]
@@ -67,6 +67,7 @@ use getmasters_proto::{
         crate::routes::simlab::run_round,
         crate::routes::simlab::rounds,
         crate::routes::simlab::leaderboard,
+        crate::routes::simlab::report,
         crate::routes::simlab::set_schedule,
         crate::routes::simlab::set_state,
         crate::routes::simlab::reset,
@@ -160,6 +161,7 @@ use getmasters_proto::{
         SimDecisionDto,
         SimRoundDto,
         SimRoundResultDto,
+        SimReportDto,
         SetSimScheduleRequest,
         DailySnapshotDto,
         MarketIndexDto,

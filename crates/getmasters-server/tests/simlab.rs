@@ -299,6 +299,24 @@ async fn round_loop_benchmark_pnl_and_master_hold() {
         trader_row.alpha
     );
 
+    // Report: a Markdown export carrying the conditions, leaderboard, and each round's reasoning.
+    let report: getmasters_proto::SimReportDto = client
+        .get(format!("{base}/projects/{pid}/simulations/{sid}/report"))
+        .bearer_auth(TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(report.markdown.contains("熊市防御"), "report has the sim name");
+    assert!(report.markdown.contains("## 排行榜"), "report has the leaderboard");
+    assert!(report.markdown.contains("第 1 轮"), "report has round detail");
+    assert!(
+        report.markdown.contains("2026年半年度报告"),
+        "report carries the master reasoning (which echoed the evidence)"
+    );
+
     // Reset: back to round 0 under the same conditions (config + participants kept).
     let reset: SimulationDto = client
         .post(format!("{base}/projects/{pid}/simulations/{sid}/reset"))

@@ -26,6 +26,10 @@ use getmasters_proto::{
     SimulationDto,
 };
 
+fn fmt_pct(v: Option<f64>) -> String {
+    v.map(|p| format!("{:+.2}%", p * 100.0)).unwrap_or_else(|| "—".into())
+}
+
 use crate::state::AppState;
 
 /// The decision contract handed to every master (RETuning-informed structure + a machine-parseable
@@ -638,4 +642,87 @@ pub fn round_detail(store: &Store, round: &getmasters_core::store::SimRoundRow) 
         run_at: round.run_at,
         decisions,
     }
+}
+
+/// Assemble a human-readable Markdown report of a simulation: the given conditions, the final
+/// leaderboard (with benchmark alpha), and every round's decisions + full RETuning reasoning.
+/// This is the "把大师的思考和结果作为参考" deliverable — savable and shareable.
+pub fn build_report(store: &Store, sim: &SimulationRow) -> Result<String, String> {
+    let lb = leaderboard(store, &sim.id)?;
+    let cons = constraints_of(sim);
+    let mut rounds: Vec<SimRoundDto> = store
+        .list_sim_rounds(&sim.id)
+        .map_err(|e| e.to_string())?
+        .iter()
+        .map(|r| round_detail(store, r))
+        .collect();
+    rounds.reverse(); // oldest-first reads better in a report
+
+    let mut md = String::new();
+    md.push_str(&format!("# 模拟盘报告：{}\n\n", sim.name));
+    if let Some(s) = &sim.scenario {
+        md.push_str(&format!("**情景**：{s}\n\n"));
+    }
+    let mut cons_line = format!("只做多={}", if cons.long_only { "是" } else { "否" });
+    if let Some(w) = cons.max_weight {
+        cons_line.push_str(&format!("，单标的上限={:.0}%", w * 100.0));
+    }
+    if let Some(f) = cons.cash_floor {
+        cons_line.push_str(&format!("，现金下限={:.0}%", f * 100.0));
+    }
+    if let Some(b) = &cons.benchmark {
+        cons_line.push_str(&format!("，基准={b}"));
+    }
+    if cons.fee_bps > 0.0 {
+        cons_line.push_str(&format!("，交易费={}bp", cons.fee_bps));
+    }
+    md.push_str(&format!(
+        "**初始资金**：{:.0}　**已进行**：{} 轮　**股票池**：{}\n\n**约束**：{}\n\n",
+        sim.starting_cash,
+        sim.round_no,
+        universe_of(sim).join("、"),
+        cons_line
+    ));
+
+    md.push_str("## 排行榜\n\n| 排名 | 大师 | 累计收益 | 超额 | 净值 |\n|---|---|---|---|---|\n");
+    for (i, r) in lb.iter().enumerate() {
+        md.push_str(&format!(
+            "| {} | {} | {} | {} | {} |\n",
+            i + 1,
+            r.master_slug,
+            fmt_pct(r.return_pct),
+            if r.master_slug == BENCHMARK_SLUG {
+                "—".to_string()
+            } else {
+                fmt_pct(r.alpha)
+            },
+            r.nav.map(|n| format!("{n:.0}")).unwrap_or_else(|| "—".into()),
+        ));
+    }
+    md.push('\n');
+
+    for rd in &rounds {
+        md.push_str(&format!("## 第 {} 轮", rd.round_no));
+        if let Some(d) = &rd.quote_date {
+            md.push_str(&format!("（行情 {d}）"));
+        }
+        md.push_str("\n\n");
+        for dec in &rd.decisions {
+            md.push_str(&format!(
+                "### {} · 收益 {}\n\n",
+                dec.master_slug,
+                fmt_pct(dec.return_pct)
+            ));
+            if let Some(s) = &dec.summary {
+                md.push_str(&format!("**决策**：{s}\n\n"));
+            }
+            if let Some(reason) = &dec.reasoning {
+                md.push_str(reason);
+                md.push_str("\n\n");
+            }
+        }
+    }
+
+    md.push_str("\n---\n模拟推演，非真实交易，不构成投资建议，不荐股。\n");
+    Ok(md)
 }

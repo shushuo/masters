@@ -8,7 +8,8 @@ use axum::http::StatusCode;
 use axum::Json;
 
 use getmasters_proto::{
-    CreateSimulationRequest, SetSimScheduleRequest, SimLeaderboardRowDto, SimRoundDto, SimulationDto,
+    CreateSimulationRequest, SetSimScheduleRequest, SimLeaderboardRowDto, SimReportDto, SimRoundDto,
+    SimulationDto,
 };
 
 use getmasters_core::simlab::BENCHMARK_SLUG;
@@ -354,6 +355,27 @@ pub async fn leaderboard(
     crate::simlab::leaderboard(state.agent.store(), &sid)
         .map(Json)
         .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e))
+}
+
+#[utoipa::path(
+    get,
+    path = "/projects/{id}/simulations/{sid}/report",
+    operation_id = "get_simulation_report",
+    params(
+        ("id" = String, Path, description = "Project id"),
+        ("sid" = String, Path, description = "Simulation id")
+    ),
+    responses((status = 200, description = "A Markdown report: conditions + leaderboard + every round's reasoning", body = SimReportDto)),
+    tag = "simlab"
+)]
+pub async fn report(
+    State(state): State<AppState>,
+    Path((id, sid)): Path<(String, String)>,
+) -> Result<Json<SimReportDto>, AppError> {
+    let sim = load_owned(&state, &id, &sid)?;
+    let markdown = crate::simlab::build_report(state.agent.store(), &sim)
+        .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(SimReportDto { markdown }))
 }
 
 #[utoipa::path(

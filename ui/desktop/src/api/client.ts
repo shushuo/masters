@@ -64,6 +64,7 @@ export type SimDecisionDto = components["schemas"]["SimDecisionDto"];
 export type SimRoundDto = components["schemas"]["SimRoundDto"];
 export type SimRoundResultDto = components["schemas"]["SimRoundResultDto"];
 export type SetSimScheduleRequest = components["schemas"]["SetSimScheduleRequest"];
+export type SimReportDto = components["schemas"]["SimReportDto"];
 
 /** Connection details handed over by the daemon handshake (`GETMASTERSD_READY`). */
 export interface DaemonConn {
@@ -383,6 +384,16 @@ export class MastersClient {
       { method: "PUT", headers: this.headers() },
     );
     if (!res.ok) throw new Error(`setSimulationState failed: ${res.status} ${await res.text()}`);
+    return res.json();
+  }
+
+  /** A Markdown report: conditions + leaderboard + every round's decisions and reasoning. */
+  async getSimulationReport(projectId: string, sid: string): Promise<SimReportDto> {
+    const res = await fetch(
+      `${this.base()}/projects/${projectId}/simulations/${sid}/report`,
+      { headers: this.headers() },
+    );
+    if (!res.ok) throw new Error(`getSimulationReport failed: ${res.status}`);
     return res.json();
   }
 

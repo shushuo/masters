@@ -1110,6 +1110,13 @@ pub struct SimRoundResultDto {
     pub decisions: Vec<SimDecisionDto>,
 }
 
+/// A human-readable Markdown report of a simulation (config + leaderboard + every round's
+/// decisions and full reasoning) — the "thinking and results as reference" deliverable.
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct SimReportDto {
+    pub markdown: String,
+}
+
 /// Body for `PUT /projects/{id}/simulations/{sid}/schedule` — set or clear the auto-round cron.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, ToSchema)]
 pub struct SetSimScheduleRequest {

@@ -104,6 +104,10 @@ pub fn build_app(state: AppState) -> Router {
             get(routes::simlab::leaderboard),
         )
         .route(
+            "/projects/{id}/simulations/{sid}/report",
+            get(routes::simlab::report),
+        )
+        .route(
             "/projects/{id}/simulations/{sid}/schedule",
             axum::routing::put(routes::simlab::set_schedule),
         )

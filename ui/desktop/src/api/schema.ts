@@ -628,6 +628,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{id}/simulations/{sid}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_simulation_report"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{id}/simulations/{sid}/reset": {
         parameters: {
             query?: never;
@@ -2129,6 +2145,13 @@ export interface components {
             /** Format: int64 */
             unvalued_count?: number;
         };
+        /**
+         * @description A human-readable Markdown report of a simulation (config + leaderboard + every round's
+         *     decisions and full reasoning) — the "thinking and results as reference" deliverable.
+         */
+        SimReportDto: {
+            markdown: string;
+        };
         /** @description One decision round with every participant's decision. */
         SimRoundDto: {
             decisions?: components["schemas"]["SimDecisionDto"][];
@@ -3522,6 +3545,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SimLeaderboardRowDto"][];
+                };
+            };
+        };
+    };
+    get_simulation_report: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                id: string;
+                /** @description Simulation id */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A Markdown report: conditions + leaderboard + every round's reasoning */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimReportDto"];
                 };
             };
         };
