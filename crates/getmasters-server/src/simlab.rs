@@ -45,6 +45,11 @@ const DECISION_CONTRACT: &str = r#"请按以下结构思考并作答（这是模
 
 规则：只能配置给定股票池内的标的；只做多（权重为正）；各标的权重合计不超过 100%。若本轮维持不动，也请输出与当前持仓一致的目标配置。"#;
 
+/// Look-back window (days) for the per-round disclosure evidence.
+const ANNOUNCE_DAYS: u32 = 14;
+/// Cap on announcements per symbol injected into a brief (keeps briefs bounded).
+const ANNOUNCE_PER_SYMBOL: usize = 3;
+
 fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -110,6 +115,7 @@ fn build_brief(
     snap: &Snapshot,
     universe: &[String],
     quotes: &BTreeMap<String, QuoteView>,
+    news: &BTreeMap<String, Vec<getmasters_core::store::AnnouncementRow>>,
 ) -> String {
     let scenario = sim.scenario.as_deref().unwrap_or("（无特定情景）");
     let mut cons_line = format!("只做多={}", if cons.long_only { "是" } else { "否" });
@@ -159,11 +165,26 @@ fn build_brief(
         }
     }
 
+    // Recent disclosures as shared evidence (RETuning multi-source; same for every master → fair).
+    let mut news_section = String::new();
+    let has_news = universe.iter().any(|s| news.get(s).is_some_and(|l| !l.is_empty()));
+    if has_news {
+        news_section.push_str("## 近期公告（证据）\n");
+        for sym in universe {
+            if let Some(list) = news.get(sym) {
+                for a in list {
+                    news_section.push_str(&format!("- {sym} {}（{}）\n", a.title, a.ann_date));
+                }
+            }
+        }
+        news_section.push('\n');
+    }
+
     format!(
         "# 模拟盘：{name}\n情景：{scenario}\n约束：{cons_line}\n\n\
          ## 你的当前组合（{slug}）\n现金：{cash:.2}\n持仓：\n{holdings}组合估值(NAV)：{nav:.2}\n\n\
          ## 本轮行情快照\n{quote_table}\n\
-         ## 可投股票池\n{universe}\n\n{contract}",
+         {news_section}## 可投股票池\n{universe}\n\n{contract}",
         name = sim.name,
         slug = snap.slug,
         cash = snap.cash,
@@ -252,6 +273,18 @@ async fn run_round_inner(
         }
     }
 
+    // Recent disclosures as shared evidence (RETuning multi-source). Best-effort + fetched once per
+    // round so every master weighs the same material; sources without a disclosure channel degrade
+    // to empty. Capped per symbol to keep briefs bounded.
+    let mut news: BTreeMap<String, Vec<getmasters_core::store::AnnouncementRow>> = BTreeMap::new();
+    for sym in &universe {
+        if let Ok(list) = market.announcements(sym, ANNOUNCE_DAYS, now).await {
+            if !list.is_empty() {
+                news.insert(sym.clone(), list.into_iter().take(ANNOUNCE_PER_SYMBOL).collect());
+            }
+        }
+    }
+
     let round_no = sim.round_no + 1;
     let round_id = store
         .insert_sim_round(&sim.id, round_no, quote_date.as_deref(), "ok")
@@ -285,12 +318,13 @@ async fn run_round_inner(
         .iter()
         .enumerate()
         .filter(|(_, s)| s.slug != BENCHMARK_SLUG)
-        .map(|(i, s)| (i, build_brief(sim, &cons_dto, s, &universe, &quotes)))
+        .map(|(i, s)| (i, build_brief(sim, &cons_dto, s, &universe, &quotes, &news)))
         .collect();
     let runs = briefs.into_iter().map(|(i, brief)| {
         let slug = snaps[i].slug.clone();
+        let title = format!("sim:{}:{}", sim.id, slug);
         async move {
-            let r = crate::master::run(state, &sim.project_id, &slug, &brief).await;
+            let r = crate::master::run_titled(state, &sim.project_id, &slug, &brief, &title).await;
             (i, r)
         }
     });

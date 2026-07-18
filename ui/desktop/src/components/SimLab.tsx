@@ -336,9 +336,15 @@ function CreateForm({
 export default function SimLab({
   client,
   onAsk,
+  simId,
+  onOpen,
 }: {
   client: MastersClient;
   onAsk: (draft?: string) => void;
+  /** Deep-linked simulation id (`#/simlab/:sid`); undefined = the list. */
+  simId?: string;
+  /** Navigate to a simulation (or back to the list with `null`). */
+  onOpen: (sid: string | null) => void;
 }) {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [masters, setMasters] = useState<MasterSummaryDto[]>([]);
@@ -389,6 +395,21 @@ export default function SimLab({
     [client, projectId],
   );
 
+  // Selection is route-driven (`#/simlab/:sid`): open the deep-linked sim, else show the list.
+  useEffect(() => {
+    if (!projectId) return;
+    if (simId) {
+      openDetail(simId).catch((e) => {
+        setError(String(e));
+        onOpen(null);
+      });
+    } else {
+      setSelected(null);
+      setRounds([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [simId, projectId]);
+
   const create = async (body: CreateSimulationRequest) => {
     if (!projectId) return;
     setBusy(true);
@@ -397,7 +418,7 @@ export default function SimLab({
       const sim = await client.createSimulation(projectId, body);
       setCreating(false);
       await loadList(projectId);
-      await openDetail(sim.id);
+      onOpen(sim.id);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -455,7 +476,7 @@ export default function SimLab({
   const removeSim = async (sid: string) => {
     if (!projectId) return;
     await client.deleteSimulation(projectId, sid);
-    setSelected(null);
+    onOpen(null);
     await loadList(projectId);
   };
 
@@ -475,7 +496,7 @@ export default function SimLab({
           </p>
         </div>
         {selected ? (
-          <Button variant="ghost" className="ml-auto" onClick={() => setSelected(null)}>
+          <Button variant="ghost" className="ml-auto" onClick={() => onOpen(null)}>
             ← {L("全部模拟盘", "All simulations")}
           </Button>
         ) : (
@@ -630,7 +651,7 @@ export default function SimLab({
                 return (
                   <button
                     key={s.id}
-                    onClick={() => openDetail(s.id)}
+                    onClick={() => onOpen(s.id)}
                     className="flex w-full items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3 text-left transition-colors hover:border-accent"
                   >
                     <div className="min-w-0 flex-1">

@@ -180,7 +180,15 @@ pub async fn delete(
     Path((id, sid)): Path<(String, String)>,
 ) -> Result<StatusCode, AppError> {
     load_owned(&state, &id, &sid)?;
-    state.agent.store().delete_simulation(&sid)?;
+    let store = state.agent.store();
+    // Sweep the per-round master run sessions (`sim:<sid>:<slug>`) so they don't linger after the
+    // simulation (and its decisions/valuations, which cascade) is gone.
+    if let Ok(sessions) = store.session_ids_titled_like(&format!("sim:{sid}:%")) {
+        for s in &sessions {
+            let _ = store.delete_session(s);
+        }
+    }
+    store.delete_simulation(&sid)?;
     Ok(StatusCode::NO_CONTENT)
 }
 

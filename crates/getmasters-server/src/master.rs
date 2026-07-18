@@ -218,12 +218,25 @@ pub async fn run(
     slug: &str,
     brief: &str,
 ) -> Result<MasterRunResult, String> {
+    run_titled(state, project_id, slug, brief, &format!("master:{slug}")).await
+}
+
+/// Like [`run`], but with a caller-chosen session title. The Simulation Investment Lab uses this to
+/// tag its per-round runs `sim:<sid>:<slug>` so they're distinguishable from (and don't clutter) the
+/// workbench's single-master chat history, and can be swept when the simulation is deleted.
+pub async fn run_titled(
+    state: &AppState,
+    project_id: &str,
+    slug: &str,
+    brief: &str,
+    title: &str,
+) -> Result<MasterRunResult, String> {
     let master = load_master_any(state, project_id, slug)?
         .ok_or_else(|| format!("master '{slug}' not found"))?;
 
     let store = state.agent.store().clone();
     let session = store
-        .create_session(Some(project_id), Some(&format!("master:{slug}")))
+        .create_session(Some(project_id), Some(title))
         .map_err(|e| e.to_string())?;
 
     let stream = run_master_stream(

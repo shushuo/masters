@@ -209,7 +209,12 @@ export function App() {
         ) : view === "briefings" ? (
           <Briefings client={client} onAsk={openAsk} onSeen={markBriefingsSeen} />
         ) : view === "simlab" ? (
-          <SimLab client={client} onAsk={openAsk} />
+          <SimLab
+            client={client}
+            onAsk={openAsk}
+            simId={route.simId}
+            onOpen={(sid) => navigate({ view: "simlab", simId: sid ?? undefined })}
+          />
         ) : view === "lab" ? (
           <Lab
             client={client}

@@ -10,6 +10,7 @@ use std::sync::Arc;
 use getmasters_core::agent::AgentService;
 use getmasters_core::config::Config;
 use getmasters_core::market::testing::FixtureFetcher;
+use getmasters_core::market::Announcement;
 use getmasters_core::masters::Master;
 use getmasters_core::provider::MockProvider;
 use getmasters_core::store::{PriceRow, Store};
@@ -119,7 +120,19 @@ async fn latest_round(client: &reqwest::Client, base: &str, pid: &str, sid: &str
 async fn round_loop_benchmark_pnl_and_master_hold() {
     let dir = temp_dir();
     let store = Store::open_in_memory().unwrap();
-    let fetcher = Arc::new(FixtureFetcher::single("sh600519", "贵州茅台", 1700.0));
+    // Seed a recent disclosure so we can assert it lands in the master's brief (RETuning evidence).
+    let fetcher = Arc::new(FixtureFetcher::single("sh600519", "贵州茅台", 1700.0).with_announcements(
+        "sh600519",
+        vec![Announcement {
+            ann_id: "a1".into(),
+            symbol: "sh600519".into(),
+            title: "2026年半年度报告".into(),
+            ann_date: "2026-07-10".into(),
+            ann_time: now_ms() - 24 * 60 * 60 * 1000,
+            url: None,
+            source: "cninfo".into(),
+        }],
+    ));
     let state = state_with(&store, &dir, fetcher);
 
     let pid = store.create_project("sim-proj", None).unwrap();
@@ -172,9 +185,14 @@ async fn round_loop_benchmark_pnl_and_master_hold() {
     assert!((bench.return_pct.unwrap()).abs() < 1e-6, "benchmark flat at entry");
     let trader = r1.decisions.iter().find(|d| d.master_slug == "trader").unwrap();
     assert!(!trader.parsed, "echo reply is unparseable → held");
+    let reasoning = trader.reasoning.as_deref().unwrap_or("");
     assert!(
-        trader.reasoning.as_deref().unwrap_or("").contains("模拟盘"),
+        reasoning.contains("模拟盘"),
         "the master's reasoning (echoed brief) was captured"
+    );
+    assert!(
+        reasoning.contains("2026年半年度报告"),
+        "the recent disclosure was injected as evidence into the brief"
     );
 
     // The market moves +10%: insert a later-dated quote so round 2 marks to 1870.
