@@ -477,6 +477,7 @@ function EnvironmentPanel({
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [telemetry, setTelemetry] = useState<boolean | null>(null);
+  const [redaction, setRedaction] = useState<boolean | null>(null);
   const [updateStatus, setUpdateStatus] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
 
@@ -484,14 +485,29 @@ function EnvironmentPanel({
     client.getEnvironment().then(setEnv).catch((e) => setError(String(e)));
     client
       .getSettings()
-      .then((s) => setTelemetry(s.telemetry_enabled ?? true))
-      .catch(() => setTelemetry(null));
+      .then((s) => {
+        setTelemetry(s.telemetry_enabled ?? true);
+        setRedaction(s.redaction_enabled ?? false);
+      })
+      .catch(() => {
+        setTelemetry(null);
+        setRedaction(null);
+      });
   }, [client]);
 
   async function toggleTelemetry(enabled: boolean) {
     setTelemetry(enabled);
     try {
       await client.updateSettings({ telemetry_enabled: enabled });
+    } catch (e) {
+      setError(`Error: ${String(e)}`);
+    }
+  }
+
+  async function toggleRedaction(enabled: boolean) {
+    setRedaction(enabled);
+    try {
+      await client.updateSettings({ redaction_enabled: enabled });
     } catch (e) {
       setError(`Error: ${String(e)}`);
     }
@@ -591,6 +607,21 @@ function EnvironmentPanel({
             <span className="text-text">Anonymous install telemetry</span> — reports a single random
             install id + platform/version once, so installs can be counted. No file or personal data
             is sent. Uncheck to opt out.
+          </span>
+        </label>
+      )}
+
+      {redaction !== null && (
+        <label className="mt-3 flex items-start gap-2 text-xs text-muted">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={redaction}
+            onChange={(e) => toggleRedaction(e.target.checked)}
+          />
+          <span>
+            <span className="text-text">隐私脱敏 / Redaction mode</span> —
+            外发内容（邮件简报）中的金额与持仓数字将被打码（收益率、日期保留），细节不离开本机。默认关闭。
           </span>
         </label>
       )}

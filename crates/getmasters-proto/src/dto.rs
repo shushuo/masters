@@ -664,6 +664,10 @@ pub struct SettingsDto {
     /// Whether anonymous install telemetry is enabled (on by default; opt-out).
     #[serde(default = "default_true")]
     pub telemetry_enabled: bool,
+    /// Redaction mode (ADR-0016): mask monetary detail before content leaves the device (email
+    /// digests). Off by default.
+    #[serde(default)]
+    pub redaction_enabled: bool,
 }
 
 /// The resolved runtime environment (the `hermes config` view analogue). Read-only; surfaces where
@@ -728,6 +732,9 @@ pub struct SettingsUpdate {
     /// Enable/disable anonymous install telemetry (opt-out; on by default).
     #[serde(default)]
     pub telemetry_enabled: Option<bool>,
+    /// Enable/disable redaction mode (ADR-0016; off by default).
+    #[serde(default)]
+    pub redaction_enabled: Option<bool>,
 }
 
 /// One provider in the configurable catalog, with its current (non-secret) state.

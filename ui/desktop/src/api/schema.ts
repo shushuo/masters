@@ -2053,6 +2053,11 @@ export interface components {
             openai_key_set: boolean;
             /** @description `"anthropic" | "openai"`. */
             provider: string;
+            /**
+             * @description Redaction mode (ADR-0016): mask monetary detail before content leaves the device (email
+             *     digests). Off by default.
+             */
+            redaction_enabled?: boolean;
             /** @description Whether anonymous install telemetry is enabled (on by default; opt-out). */
             telemetry_enabled?: boolean;
         };
@@ -2066,6 +2071,8 @@ export interface components {
             provider_bases?: {
                 [key: string]: string;
             } | null;
+            /** @description Enable/disable redaction mode (ADR-0016; off by default). */
+            redaction_enabled?: boolean | null;
             /** @description Enable/disable anonymous install telemetry (opt-out; on by default). */
             telemetry_enabled?: boolean | null;
         };
