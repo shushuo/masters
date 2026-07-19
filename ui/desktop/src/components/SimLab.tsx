@@ -15,21 +15,15 @@ import type {
 } from "../api/client";
 import { Badge, Button, Card, IconButton, Input, Markdown } from "./ui";
 import { masterColor, masterGlyph, masterName, BENCHMARK_SLUG } from "../lib/masters";
-import { getLocale } from "../lib/i18n";
+import { t, getLocale } from "../lib/i18n";
 
-const zh = getLocale() === "zh";
-const L = (cn: string, en: string) => (zh ? cn : en);
-
-const FOOTER = L(
-  "ⓘ 模拟结果为假设推演，非真实交易，不构成投资建议，不荐股",
-  "ⓘ Simulated results are hypothetical — not real trades, not investment advice",
-);
+const FOOTER = t("simlab.footer");
 
 /** Schedule presets (label → cron). Post-close = 07:30 UTC ≈ 15:30 Beijing. */
 const SCHEDULE_PRESETS: { key: string; label: string; cron: string | null }[] = [
-  { key: "off", label: L("不定时（手动运行）", "Manual only"), cron: null },
-  { key: "daily", label: L("每个交易日收盘后", "Each trading day, post-close"), cron: "30 7 * * MON-FRI" },
-  { key: "weekly", label: L("每周一开盘前", "Weekly, Monday pre-open"), cron: "0 1 * * MON" },
+  { key: "off", label: t("simlab.manualOnly"), cron: null },
+  { key: "daily", label: t("simlab.eachTradingDayPost"), cron: "30 7 * * MON-FRI" },
+  { key: "weekly", label: t("simlab.weeklyMondayPreOpen"), cron: "0 1 * * MON" },
 ];
 
 function pct(v: number | null | undefined): string {
@@ -107,9 +101,9 @@ function Leaderboard({ rows }: { rows: SimLeaderboardRowDto[] }) {
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-medium">{masterName(r.master_slug)}</div>
             <div className="text-xs text-muted">
-              {L("净值", "NAV")} {money(r.nav)}
+              {t("simlab.nav")} {money(r.nav)}
               {(r.unvalued_count ?? 0) > 0 && (
-                <span className="text-warning-fg"> · {r.unvalued_count} {L("项未估值", "unvalued")} ⚠</span>
+                <span className="text-warning-fg"> · {r.unvalued_count} {t("simlab.unvalued")} ⚠</span>
               )}
             </div>
           </div>
@@ -120,7 +114,7 @@ function Leaderboard({ rows }: { rows: SimLeaderboardRowDto[] }) {
             </div>
             {r.alpha != null && (
               <div className="text-xs text-muted">
-                {L("超额", "α")} <ReturnText v={r.alpha} className="text-xs" />
+                {t("simlab.s")} <ReturnText v={r.alpha} className="text-xs" />
               </div>
             )}
           </div>
@@ -149,7 +143,7 @@ function DecisionCard({
         <Face slug={d.master_slug} size={24} />
         <span className="text-sm font-medium">{masterName(d.master_slug)}</span>
         {!d.parsed && d.master_slug !== BENCHMARK_SLUG && (
-          <Badge>{L("维持不动", "held")}</Badge>
+          <Badge>{t("simlab.held")}</Badge>
         )}
         <span className="ml-auto text-sm font-semibold">
           <ReturnText v={d.return_pct} />
@@ -159,7 +153,7 @@ function DecisionCard({
         <div className="mt-2 flex flex-wrap gap-1">
           {targets.map(([sym, w]) => (
             <Badge key={sym}>
-              {sym === "现金" ? L("现金", "cash") : sym} {Math.round(w)}%
+              {sym === "现金" ? t("simlab.cash") : sym} {Math.round(w)}%
             </Badge>
           ))}
         </div>
@@ -171,7 +165,7 @@ function DecisionCard({
             className="text-xs text-accent hover:underline"
             onClick={() => setOpen((o) => !o)}
           >
-            {open ? L("收起推理", "Hide reasoning") : L("查看推理", "Show reasoning")}
+            {open ? t("simlab.hideReasoning") : t("simlab.showReasoning")}
           </button>
           {open && (
             <div className="mt-2 max-h-80 overflow-y-auto rounded-lg border border-border bg-bg p-3">
@@ -187,15 +181,15 @@ function DecisionCard({
         className="mt-2 inline-flex items-center gap-1 text-xs text-muted hover:text-text"
         onClick={() =>
           onAsk(
-            L(
-              `关于「${simName}」模拟盘第 ${roundNo} 轮，${masterName(d.master_slug)}的决策，我想请教：`,
-              `About "${simName}" round ${roundNo}, ${masterName(d.master_slug, "en")}'s decision, I'd like to ask: `,
-            ),
+            t("simlab.askAbout")
+              .replace("{sim}", simName)
+              .replace("{round}", String(roundNo))
+              .replace("{master}", masterName(d.master_slug, getLocale())),
           )
         }
       >
         <MessageCircleQuestion className="h-3.5 w-3.5" />
-        {L("就此提问", "Ask about this")}
+        {t("simlab.askAboutThis")}
       </button>
     </Card>
   );
@@ -261,55 +255,55 @@ function CreateForm({
   return (
     <Card className="space-y-3 p-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-display text-base">{L("新建模拟盘", "New simulation")}</h3>
-        <IconButton onClick={onCancel} label={L("关闭", "Close")}>
+        <h3 className="font-display text-base">{t("simlab.newSimulation")}</h3>
+        <IconButton onClick={onCancel} label={t("simlab.close")}>
           <X className="h-4 w-4" />
         </IconButton>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm">
-          <span className="mb-1 block text-muted">{L("名称", "Name")}</span>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={L("如：熊市防御赛", "e.g. Bear-market defense")} />
+          <span className="mb-1 block text-muted">{t("simlab.name")}</span>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("simlab.eGBearMarket")} />
         </label>
         <label className="text-sm">
-          <span className="mb-1 block text-muted">{L("初始资金", "Starting cash")}</span>
+          <span className="mb-1 block text-muted">{t("simlab.startingCash")}</span>
           <Input type="number" value={cash} onChange={(e) => setCash(e.target.value)} />
         </label>
       </div>
       <label className="block text-sm">
-        <span className="mb-1 block text-muted">{L("情景说明（可选）", "Scenario (optional)")}</span>
-        <Input value={scenario} onChange={(e) => setScenario(e.target.value)} placeholder={L("如：只做沪深300成分股，防御为主", "e.g. CSI 300 only, defensive")} />
+        <span className="mb-1 block text-muted">{t("simlab.scenarioOptional")}</span>
+        <Input value={scenario} onChange={(e) => setScenario(e.target.value)} placeholder={t("simlab.eGCsi300")} />
       </label>
       <label className="block text-sm">
-        <span className="mb-1 block text-muted">{L("股票池（逗号分隔的代码）", "Universe (comma-separated codes)")}</span>
+        <span className="mb-1 block text-muted">{t("simlab.universeCommaSeparatedCodes")}</span>
         <Input value={universe} onChange={(e) => setUniverse(e.target.value)} placeholder="600519, 000001, 300750" />
       </label>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm">
-          <span className="mb-1 block text-muted">{L("基准（可选）", "Benchmark (optional)")}</span>
+          <span className="mb-1 block text-muted">{t("simlab.benchmarkOptional")}</span>
           <Input value={benchmark} onChange={(e) => setBenchmark(e.target.value)} placeholder="sh000300" />
         </label>
         <label className="text-sm">
-          <span className="mb-1 block text-muted">{L("单标的上限 %（可选）", "Max weight % (optional)")}</span>
+          <span className="mb-1 block text-muted">{t("simlab.maxWeightOptional")}</span>
           <Input type="number" value={maxWeight} onChange={(e) => setMaxWeight(e.target.value)} placeholder="40" />
         </label>
         <label className="text-sm">
-          <span className="mb-1 block text-muted">{L("现金下限 %（可选）", "Cash floor % (optional)")}</span>
+          <span className="mb-1 block text-muted">{t("simlab.cashFloorOptional")}</span>
           <Input type="number" value={cashFloor} onChange={(e) => setCashFloor(e.target.value)} placeholder="0" />
         </label>
         <label className="text-sm">
-          <span className="mb-1 block text-muted">{L("交易费 bp（可选）", "Fee bps (optional)")}</span>
+          <span className="mb-1 block text-muted">{t("simlab.feeBpsOptional")}</span>
           <Input type="number" value={feeBps} onChange={(e) => setFeeBps(e.target.value)} placeholder="0" />
         </label>
       </div>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={longOnly} onChange={(e) => setLongOnly(e.target.checked)} />
-        {L("仅做多", "Long-only")}
+        {t("simlab.longOnly")}
       </label>
       <div>
-        <span className="mb-1 block text-sm text-muted">{L("参赛大师", "Participating masters")}</span>
+        <span className="mb-1 block text-sm text-muted">{t("simlab.participatingMasters")}</span>
         {masters.length === 0 ? (
-          <p className="text-xs text-faint">{L("暂无可用大师，先在高级工作台创建或从云端同步。", "No masters yet — create or sync some in the Lab.")}</p>
+          <p className="text-xs text-faint">{t("simlab.noMastersYetCreate")}</p>
         ) : (
           <div className="flex flex-wrap gap-2">
             {masters.map((m) => {
@@ -331,9 +325,9 @@ function CreateForm({
         )}
       </div>
       <div className="flex justify-end gap-2 pt-1">
-        <Button variant="ghost" onClick={onCancel}>{L("取消", "Cancel")}</Button>
+        <Button variant="ghost" onClick={onCancel}>{t("simlab.cancel")}</Button>
         <Button onClick={submit} disabled={!canSubmit}>
-          {busy ? L("创建中…", "Creating…") : L("创建", "Create")}
+          {busy ? t("simlab.creating") : t("simlab.create")}
         </Button>
       </div>
     </Card>
@@ -549,7 +543,7 @@ export default function SimLab({
 
   const resetSim = async () => {
     if (!projectId || !selected) return;
-    if (!confirm(L("重置将清空全部轮次与持仓，回到第 0 轮（保留配置）。确定？", "Reset clears all rounds and holdings back to round 0 (config kept). Continue?"))) {
+    if (!confirm(t("simlab.resetClearsAllRounds"))) {
       return;
     }
     try {
@@ -572,19 +566,19 @@ export default function SimLab({
       <header className="flex items-center gap-2 border-b border-border px-6 py-4">
         <FlaskConical className="h-5 w-5 text-accent" />
         <div>
-          <h1 className="font-display text-lg">{L("模拟投资实验室", "Simulation Investment Lab")}</h1>
+          <h1 className="font-display text-lg">{t("simlab.simulationInvestmentLab")}</h1>
           <p className="text-xs text-muted">
-            {L("让大师在给定条件下做模拟投资，观察其思考与结果", "Masters paper-trade under fixed conditions — watch their reasoning and results")}
+            {t("simlab.mastersPaperTradeUnder")}
           </p>
         </div>
         {selected ? (
           <Button variant="ghost" className="ml-auto" onClick={() => onOpen(null)}>
-            ← {L("全部模拟盘", "All simulations")}
+            ← {t("simlab.allSimulations")}
           </Button>
         ) : (
           !creating && (
             <Button className="ml-auto" onClick={() => setCreating(true)}>
-              <Plus className="h-4 w-4" /> {L("新建", "New")}
+              <Plus className="h-4 w-4" /> {t("simlab.new")}
             </Button>
           )
         )}
@@ -599,7 +593,7 @@ export default function SimLab({
           )}
 
           {loading ? (
-            <p className="text-sm text-muted">{L("加载中…", "Loading…")}</p>
+            <p className="text-sm text-muted">{t("simlab.loading")}</p>
           ) : creating ? (
             <CreateForm masters={masters} onCreate={create} onCancel={() => setCreating(false)} busy={busy} />
           ) : selected ? (
@@ -609,16 +603,16 @@ export default function SimLab({
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="font-display text-xl">{selected.name}</h2>
-                    {selected.state === "paused" && <Badge>{L("已暂停", "Paused")}</Badge>}
-                    {selected.state === "ended" && <Badge>{L("已结束", "Ended")}</Badge>}
+                    {selected.state === "paused" && <Badge>{t("simlab.paused")}</Badge>}
+                    {selected.state === "ended" && <Badge>{t("simlab.ended")}</Badge>}
                   </div>
                   {selected.scenario && <p className="text-sm text-muted">{selected.scenario}</p>}
                   <p className="mt-1 text-xs text-faint">
-                    {L("已进行", "Rounds")} {selected.round_no} · {L("初始资金", "start")} {money(selected.starting_cash)} ·{" "}
+                    {t("simlab.rounds")} {selected.round_no} · {t("simlab.start")} {money(selected.starting_cash)} ·{" "}
                     {selected.universe.join("、")}
                   </p>
                 </div>
-                <IconButton onClick={() => removeSim(selected.id)} label={L("删除", "Delete")}>
+                <IconButton onClick={() => removeSim(selected.id)} label={t("simlab.delete")}>
                   <Trash2 className="h-4 w-4" />
                 </IconButton>
               </div>
@@ -630,11 +624,11 @@ export default function SimLab({
                   disabled={running || selected.state === "paused" || selected.state === "ended"}
                 >
                   <Play className="h-4 w-4" />
-                  {running ? L("运行中…", "Running…") : L("运行一轮", "Run a round")}
+                  {running ? t("simlab.running") : t("simlab.runARound")}
                 </Button>
                 {running && (
                   <Button variant="ghost" onClick={stopRound}>
-                    {L("停止", "Stop")}
+                    {t("simlab.stop")}
                   </Button>
                 )}
                 {selected.state !== "ended" && (
@@ -643,26 +637,26 @@ export default function SimLab({
                     disabled={running}
                     onClick={() => changeState(selected.state === "paused" ? "active" : "paused")}
                   >
-                    {selected.state === "paused" ? L("继续", "Resume") : L("暂停", "Pause")}
+                    {selected.state === "paused" ? t("simlab.resume") : t("simlab.pause")}
                   </Button>
                 )}
                 {selected.state !== "ended" && (
                   <Button variant="ghost" disabled={running} onClick={() => changeState("ended")}>
-                    {L("结束", "End")}
+                    {t("simlab.end")}
                   </Button>
                 )}
                 {selected.round_no > 0 && (
                   <Button variant="ghost" onClick={exportReport}>
-                    <Download className="h-4 w-4" /> {L("导出报告", "Export")}
+                    <Download className="h-4 w-4" /> {t("simlab.export")}
                   </Button>
                 )}
                 {selected.round_no > 0 && (
                   <Button variant="ghost" disabled={running} onClick={resetSim}>
-                    {L("重置", "Reset")}
+                    {t("simlab.reset")}
                   </Button>
                 )}
                 <label className="flex items-center gap-2 text-sm text-muted">
-                  {L("定时", "Schedule")}
+                  {t("simlab.schedule")}
                   <select
                     className="rounded-full border border-border bg-surface px-2 py-1 text-sm text-text"
                     value={currentPreset}
@@ -679,7 +673,10 @@ export default function SimLab({
                 </label>
                 {running && (
                   <span className="text-xs text-faint">
-                    {L(`本轮将调用 ${(selected.participants ?? []).filter((p) => p.master_slug !== BENCHMARK_SLUG).length} 位大师`, "calling masters…")}
+                    {t("simlab.willCall").replace(
+                      "{n}",
+                      String((selected.participants ?? []).filter((p) => p.master_slug !== BENCHMARK_SLUG).length),
+                    )}
                   </span>
                 )}
               </div>
@@ -688,7 +685,7 @@ export default function SimLab({
               {live && (
                 <section className="space-y-2">
                   <h3 className="text-sm font-medium text-muted">
-                    {L("本轮进行中 · 实时推理", "This round · live reasoning")}
+                    {t("simlab.thisRoundLiveReasoning")}
                   </h3>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {Object.entries(live.byAuthor).map(([author, s]) => (
@@ -697,7 +694,7 @@ export default function SimLab({
                           <Face slug={author} size={24} />
                           <span className="text-sm font-medium">{masterName(author)}</span>
                           {s.done ? (
-                            <Badge className="ml-auto">{L("已完成", "done")}</Badge>
+                            <Badge className="ml-auto">{t("simlab.done")}</Badge>
                           ) : (
                             <span className="ml-auto animate-pulse text-xs text-accent">▍</span>
                           )}
@@ -706,7 +703,7 @@ export default function SimLab({
                           {s.text ? (
                             <Markdown text={s.text} />
                           ) : (
-                            <span className="text-faint">{L("思考中…", "thinking…")}</span>
+                            <span className="text-faint">{t("simlab.thinking")}</span>
                           )}
                         </div>
                       </Card>
@@ -717,9 +714,9 @@ export default function SimLab({
 
               {/* Leaderboard */}
               <section>
-                <h3 className="mb-2 text-sm font-medium text-muted">{L("排行榜", "Leaderboard")}</h3>
+                <h3 className="mb-2 text-sm font-medium text-muted">{t("simlab.leaderboard")}</h3>
                 {(selected.participants ?? []).length === 0 ? (
-                  <p className="text-sm text-faint">{L("尚无参赛者", "No participants")}</p>
+                  <p className="text-sm text-faint">{t("simlab.noParticipants")}</p>
                 ) : (
                   <Leaderboard rows={selected.participants ?? []} />
                 )}
@@ -727,19 +724,19 @@ export default function SimLab({
 
               {/* Rounds */}
               <section className="space-y-3">
-                <h3 className="text-sm font-medium text-muted">{L("轮次记录", "Rounds")}</h3>
+                <h3 className="text-sm font-medium text-muted">{t("simlab.rounds2")}</h3>
                 {rounds.length === 0 ? (
                   <p className="text-sm text-faint">
-                    {L("还没有轮次，点击「运行一轮」开始。", "No rounds yet — click Run a round.")}
+                    {t("simlab.noRoundsYetClick")}
                   </p>
                 ) : (
                   rounds.map((r) => (
                     <div key={r.round_no} className="space-y-2">
                       <div className="flex items-center gap-2 text-sm text-muted">
                         <span className="font-medium text-text">
-                          {L("第", "Round")} {r.round_no} {L("轮", "")}
+                          {t("simlab.round")} {r.round_no} {t("simlab.s2")}
                         </span>
-                        {r.quote_date && <span className="text-xs text-faint">{L("行情", "as of")} {r.quote_date}</span>}
+                        {r.quote_date && <span className="text-xs text-faint">{t("simlab.asOf")} {r.quote_date}</span>}
                       </div>
                       <div className="grid gap-2 sm:grid-cols-2">
                         {(r.decisions ?? []).map((d) => (
@@ -760,15 +757,12 @@ export default function SimLab({
           ) : sims.length === 0 ? (
             <Card className="p-8 text-center">
               <FlaskConical className="mx-auto h-8 w-8 text-faint" />
-              <h2 className="mt-3 font-display text-lg">{L("还没有模拟盘", "No simulations yet")}</h2>
+              <h2 className="mt-3 font-display text-lg">{t("simlab.noSimulationsYet")}</h2>
               <p className="mx-auto mt-1 max-w-md text-sm text-muted">
-                {L(
-                  "创建一个模拟盘，选几位大师、给定股票池与初始资金，让他们在真实行情下做模拟投资，比一比谁的判断更稳。",
-                  "Create a simulation, pick a few masters, set a universe and starting capital, and watch them paper-trade against the live market.",
-                )}
+                {t("simlab.emptyDesc")}
               </p>
               <Button className="mx-auto mt-4" onClick={() => setCreating(true)}>
-                <Plus className="h-4 w-4" /> {L("新建模拟盘", "New simulation")}
+                <Plus className="h-4 w-4" /> {t("simlab.newSimulation")}
               </Button>
             </Card>
           ) : (
@@ -785,15 +779,15 @@ export default function SimLab({
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-medium">{s.name}</div>
                       <div className="text-xs text-muted">
-                        {L("已进行", "Rounds")} {s.round_no} · {parts.length} {L("位参赛", "players")}
-                        {s.schedule_cron && <span> · ⏱ {L("定时中", "scheduled")}</span>}
+                        {t("simlab.rounds")} {s.round_no} · {parts.length} {t("simlab.players")}
+                        {s.schedule_cron && <span> · ⏱ {t("simlab.scheduled")}</span>}
                       </div>
                     </div>
                     {top && (
                       <div className="text-right">
                         <div className="flex items-center justify-end gap-1.5 text-sm">
                           <Face slug={top.master_slug} size={20} />
-                          <span className="text-muted">{L("领先", "leader")}</span>
+                          <span className="text-muted">{t("simlab.leader")}</span>
                         </div>
                         <ReturnText v={top.return_pct} className="text-sm font-semibold" />
                       </div>
