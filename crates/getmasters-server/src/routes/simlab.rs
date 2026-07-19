@@ -8,8 +8,8 @@ use axum::http::StatusCode;
 use axum::Json;
 
 use getmasters_proto::{
-    CreateSimulationRequest, SetSimScheduleRequest, SimLeaderboardRowDto, SimReportDto, SimRoundDto,
-    SimulationDto,
+    CreateSimulationRequest, SetSimScheduleRequest, SimLeaderboardRowDto, SimReportDto,
+    SimRoundDto, SimulationDto,
 };
 
 use getmasters_core::simlab::BENCHMARK_SLUG;
@@ -220,7 +220,10 @@ pub async fn run_round(
     // multi-master) round on a background task so the request never blocks or times out. Results
     // land in the DB as they complete; the UI polls GET .../{sid}.
     if !state.agent.store().claim_simulation(&sid)? {
-        return Err(AppError::new(StatusCode::CONFLICT, "该模拟盘正在运行本轮，请稍候"));
+        return Err(AppError::new(
+            StatusCode::CONFLICT,
+            "该模拟盘正在运行本轮，请稍候",
+        ));
     }
     let st = state.clone();
     tokio::spawn(async move {
@@ -292,7 +295,10 @@ pub async fn reset(
 ) -> Result<Json<SimulationDto>, AppError> {
     let sim = load_owned(&state, &id, &sid)?;
     if sim.state == "running" {
-        return Err(AppError::new(StatusCode::CONFLICT, "本轮进行中，请稍候再重置"));
+        return Err(AppError::new(
+            StatusCode::CONFLICT,
+            "本轮进行中，请稍候再重置",
+        ));
     }
     let store = state.agent.store();
     // Rounds cascade their decisions/valuations; also sweep the per-round run sessions.

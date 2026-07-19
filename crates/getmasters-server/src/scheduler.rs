@@ -79,10 +79,7 @@ pub async fn run_due(state: &AppState, now_ms: i64) {
         if let Some(sim_id) = &sched.simulation_id {
             let outcome = crate::simlab::run_round(state, sim_id).await;
             let (status, summary) = match &outcome {
-                Ok(r) => (
-                    "ok",
-                    truncate(&sim_round_digest(r), 200),
-                ),
+                Ok(r) => ("ok", truncate(&sim_round_digest(r), 200)),
                 Err(e) => {
                     tracing::warn!(schedule = %sched.id, error = %e, "scheduler: sim round failed");
                     ("error", truncate(e, 200))
@@ -172,7 +169,11 @@ pub async fn run_due(state: &AppState, now_ms: i64) {
 }
 
 /// Advance a schedule after firing (cron → next occurrence; once → disabled).
-fn advance(store: &getmasters_core::store::Store, sched: &getmasters_core::store::ScheduleRow, now_ms: i64) {
+fn advance(
+    store: &getmasters_core::store::Store,
+    sched: &getmasters_core::store::ScheduleRow,
+    now_ms: i64,
+) {
     if sched.kind == "cron" {
         let next = sched
             .cron_expr

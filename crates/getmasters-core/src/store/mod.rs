@@ -2994,7 +2994,10 @@ impl Store {
     }
 
     /// A participant's valuation series across all rounds (oldest first) — the equity curve.
-    pub fn sim_valuation_series(&self, participant_id: &str) -> Result<Vec<(i64, SimValuationRow)>> {
+    pub fn sim_valuation_series(
+        &self,
+        participant_id: &str,
+    ) -> Result<Vec<(i64, SimValuationRow)>> {
         let conn = self.lock();
         let mut stmt = conn.prepare(
             "SELECT v.id, v.round_id, v.participant_id, v.nav, v.cash, v.return_pct,

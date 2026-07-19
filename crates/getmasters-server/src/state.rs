@@ -144,7 +144,10 @@ impl AppState {
 
     /// Build a [`MarketData`] over the read paths (quotes endpoint / portfolio / sim briefs),
     /// wired with the optional second source so served quotes carry a `verified`/`disputed` flag.
-    pub fn market_data(&self, store: getmasters_core::store::Store) -> getmasters_core::market::MarketData {
+    pub fn market_data(
+        &self,
+        store: getmasters_core::store::Store,
+    ) -> getmasters_core::market::MarketData {
         let md = getmasters_core::market::MarketData::new(store, self.market.clone());
         match &self.market_secondary {
             Some(sec) => md.with_secondary(sec.clone()),

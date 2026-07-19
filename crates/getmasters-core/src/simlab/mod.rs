@@ -60,7 +60,10 @@ fn parse_line(line: &str) -> Option<(String, f64)> {
     // Accept both half- and full-width colons; also `=`.
     let sep = line.find(['：', ':', '=', '\t'])?;
     let (raw_key, raw_val) = line.split_at(sep);
-    let key = raw_key.trim().trim_start_matches(['-', '*', '•', ' ']).trim();
+    let key = raw_key
+        .trim()
+        .trim_start_matches(['-', '*', '•', ' '])
+        .trim();
     if key.is_empty() {
         return None;
     }
@@ -361,7 +364,10 @@ mod tests {
         };
         let (clean, _) = enforce_constraints(&raw, &universe, &c);
         let sum: f64 = clean.values().sum();
-        assert!((sum - 90.0).abs() < 1e-9, "scaled to 90% invested, got {sum}");
+        assert!(
+            (sum - 90.0).abs() < 1e-9,
+            "scaled to 90% invested, got {sum}"
+        );
     }
 
     #[test]
@@ -375,8 +381,11 @@ mod tests {
         assert_eq!(r.positions[0], ("sh600519".to_string(), 5000.0, Some(10.0)));
         assert!((r.cash - 50_000.0).abs() < 1e-6);
         // Post-NAV conserved (no fee): cash + shares*price = 100k.
-        let post: BTreeMap<String, f64> =
-            r.positions.iter().map(|(s, q, _)| (s.clone(), *q)).collect();
+        let post: BTreeMap<String, f64> = r
+            .positions
+            .iter()
+            .map(|(s, q, _)| (s.clone(), *q))
+            .collect();
         let (nav, _) = portfolio_nav(r.cash, &post, &prices);
         assert!((nav - 100_000.0).abs() < 1e-6);
     }
@@ -387,12 +396,15 @@ mod tests {
         let current = map(&[("sh600519", 100.0), ("sz000001", 200.0)]);
         let targets = map(&[("sh600519", 100.0)]);
         let prices = map(&[("sh600519", 10.0)]); // sz000001 has no price
-        // NAV = cash(0) + 100*10 (sz000001 unpriced → 0) = 1000.
+                                                 // NAV = cash(0) + 100*10 (sz000001 unpriced → 0) = 1000.
         let (nav, unvalued) = portfolio_nav(0.0, &current, &prices);
         assert_eq!(unvalued, 1);
         let r = rebalance(&current, nav, &targets, &prices, 0.0);
         // The unpriced holding is carried untouched; the priced one is rebalanced to 100% of NAV.
-        assert!(r.positions.iter().any(|(s, q, _)| s == "sz000001" && *q == 200.0));
+        assert!(r
+            .positions
+            .iter()
+            .any(|(s, q, _)| s == "sz000001" && *q == 200.0));
         assert_eq!(r.unvalued_count, 1);
     }
 
@@ -403,9 +415,15 @@ mod tests {
         let prices = map(&[("sh600519", 10.0)]);
         // 10 bps on 100k turnover = 100 fee.
         let r = rebalance(&current, 100_000.0, &targets, &prices, 10.0);
-        let post: BTreeMap<String, f64> =
-            r.positions.iter().map(|(s, q, _)| (s.clone(), *q)).collect();
+        let post: BTreeMap<String, f64> = r
+            .positions
+            .iter()
+            .map(|(s, q, _)| (s.clone(), *q))
+            .collect();
         let (nav, _) = portfolio_nav(r.cash, &post, &prices);
-        assert!((nav - (100_000.0 - 100.0)).abs() < 1.0, "post-nav ~ 99,900, got {nav}");
+        assert!(
+            (nav - (100_000.0 - 100.0)).abs() < 1.0,
+            "post-nav ~ 99,900, got {nav}"
+        );
     }
 }

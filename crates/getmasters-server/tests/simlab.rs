@@ -121,18 +121,20 @@ async fn round_loop_benchmark_pnl_and_master_hold() {
     let dir = temp_dir();
     let store = Store::open_in_memory().unwrap();
     // Seed a recent disclosure so we can assert it lands in the master's brief (RETuning evidence).
-    let fetcher = Arc::new(FixtureFetcher::single("sh600519", "贵州茅台", 1700.0).with_announcements(
-        "sh600519",
-        vec![Announcement {
-            ann_id: "a1".into(),
-            symbol: "sh600519".into(),
-            title: "2026年半年度报告".into(),
-            ann_date: "2026-07-10".into(),
-            ann_time: now_ms() - 24 * 60 * 60 * 1000,
-            url: None,
-            source: "cninfo".into(),
-        }],
-    ));
+    let fetcher = Arc::new(
+        FixtureFetcher::single("sh600519", "贵州茅台", 1700.0).with_announcements(
+            "sh600519",
+            vec![Announcement {
+                ann_id: "a1".into(),
+                symbol: "sh600519".into(),
+                title: "2026年半年度报告".into(),
+                ann_date: "2026-07-10".into(),
+                ann_time: now_ms() - 24 * 60 * 60 * 1000,
+                url: None,
+                source: "cninfo".into(),
+            }],
+        ),
+    );
     let state = state_with(&store, &dir, fetcher);
 
     let pid = store.create_project("sim-proj", None).unwrap();
@@ -167,9 +169,16 @@ async fn round_loop_benchmark_pnl_and_master_hold() {
         .await
         .unwrap();
     assert_eq!(sim.round_no, 0);
-    let slugs: Vec<&str> = sim.participants.iter().map(|p| p.master_slug.as_str()).collect();
+    let slugs: Vec<&str> = sim
+        .participants
+        .iter()
+        .map(|p| p.master_slug.as_str())
+        .collect();
     assert!(slugs.contains(&"trader"));
-    assert!(slugs.contains(&"__benchmark__"), "benchmark line auto-added");
+    assert!(
+        slugs.contains(&"__benchmark__"),
+        "benchmark line auto-added"
+    );
     let sid = sim.id.clone();
 
     // Round 1: at 1700 the benchmark is fully invested (return ~0), the master holds (echo → unparsed).
@@ -182,8 +191,15 @@ async fn round_loop_benchmark_pnl_and_master_hold() {
         .iter()
         .find(|d| d.master_slug == "__benchmark__")
         .unwrap();
-    assert!((bench.return_pct.unwrap()).abs() < 1e-6, "benchmark flat at entry");
-    let trader = r1.decisions.iter().find(|d| d.master_slug == "trader").unwrap();
+    assert!(
+        (bench.return_pct.unwrap()).abs() < 1e-6,
+        "benchmark flat at entry"
+    );
+    let trader = r1
+        .decisions
+        .iter()
+        .find(|d| d.master_slug == "trader")
+        .unwrap();
     assert!(!trader.parsed, "echo reply is unparseable → held");
     let reasoning = trader.reasoning.as_deref().unwrap_or("");
     assert!(
@@ -229,7 +245,9 @@ async fn round_loop_benchmark_pnl_and_master_hold() {
 
     // Leaderboard: benchmark ranks first, with a 2-point equity series.
     let lb: Vec<SimLeaderboardRowDto> = client
-        .get(format!("{base}/projects/{pid}/simulations/{sid}/leaderboard"))
+        .get(format!(
+            "{base}/projects/{pid}/simulations/{sid}/leaderboard"
+        ))
         .bearer_auth(TOKEN)
         .send()
         .await
@@ -255,7 +273,9 @@ async fn round_loop_benchmark_pnl_and_master_hold() {
 
     // Pause → a new round can't start (claim only claims `active`); resume restores it.
     let paused: SimulationDto = client
-        .put(format!("{base}/projects/{pid}/simulations/{sid}/state/paused"))
+        .put(format!(
+            "{base}/projects/{pid}/simulations/{sid}/state/paused"
+        ))
         .bearer_auth(TOKEN)
         .send()
         .await
@@ -272,7 +292,9 @@ async fn round_loop_benchmark_pnl_and_master_hold() {
         .unwrap();
     assert_eq!(blocked.status(), 409, "paused sim rejects a new round");
     let resumed: SimulationDto = client
-        .put(format!("{base}/projects/{pid}/simulations/{sid}/state/active"))
+        .put(format!(
+            "{base}/projects/{pid}/simulations/{sid}/state/active"
+        ))
         .bearer_auth(TOKEN)
         .send()
         .await
@@ -284,7 +306,9 @@ async fn round_loop_benchmark_pnl_and_master_hold() {
 
     // Benchmark alpha: the trader (all cash, flat) trails the +10% benchmark by ~ -10%.
     let after_lb: Vec<SimLeaderboardRowDto> = client
-        .get(format!("{base}/projects/{pid}/simulations/{sid}/leaderboard"))
+        .get(format!(
+            "{base}/projects/{pid}/simulations/{sid}/leaderboard"
+        ))
         .bearer_auth(TOKEN)
         .send()
         .await
@@ -309,9 +333,18 @@ async fn round_loop_benchmark_pnl_and_master_hold() {
         .json()
         .await
         .unwrap();
-    assert!(report.markdown.contains("熊市防御"), "report has the sim name");
-    assert!(report.markdown.contains("## 排行榜"), "report has the leaderboard");
-    assert!(report.markdown.contains("第 1 轮"), "report has round detail");
+    assert!(
+        report.markdown.contains("熊市防御"),
+        "report has the sim name"
+    );
+    assert!(
+        report.markdown.contains("## 排行榜"),
+        "report has the leaderboard"
+    );
+    assert!(
+        report.markdown.contains("第 1 轮"),
+        "report has round detail"
+    );
     assert!(
         report.markdown.contains("2026年半年度报告"),
         "report carries the master reasoning (which echoed the evidence)"
@@ -361,10 +394,14 @@ async fn streaming_round_emits_events_and_settles() {
     let sid = store
         .create_simulation(&pid, "流式盘", None, &universe, 100_000.0, None)
         .unwrap();
-    store.add_sim_participant(&sid, "trader", 100_000.0).unwrap();
+    store
+        .add_sim_participant(&sid, "trader", 100_000.0)
+        .unwrap();
 
     // Drive the streaming orchestrator directly (no real WebSocket needed) and drain its channel.
-    let mut turn = getmasters_server::simlab::stream_round(&state, &sid).await.unwrap();
+    let mut turn = getmasters_server::simlab::stream_round(&state, &sid)
+        .await
+        .unwrap();
     let mut saw_round_start = false;
     let mut saw_master_delta = false;
     let mut saw_master_complete = false;
@@ -413,7 +450,14 @@ async fn scheduled_round_fires_through_run_due() {
     })
     .unwrap();
     let sid = store
-        .create_simulation(&pid, "定投模拟", None, &universe, 100_000.0, Some(&constraints))
+        .create_simulation(
+            &pid,
+            "定投模拟",
+            None,
+            &universe,
+            100_000.0,
+            Some(&constraints),
+        )
         .unwrap();
     store
         .add_sim_participant(&sid, "__benchmark__", 100_000.0)
@@ -421,7 +465,15 @@ async fn scheduled_round_fires_through_run_due() {
 
     // A cron schedule already due (next_run_at in the past) → run_due fires exactly one round.
     store
-        .create_sim_schedule(&pid, &sid, "cron", Some("0 0 * * *"), Some(now_ms() - 1000), false, false)
+        .create_sim_schedule(
+            &pid,
+            &sid,
+            "cron",
+            Some("0 0 * * *"),
+            Some(now_ms() - 1000),
+            false,
+            false,
+        )
         .unwrap();
     scheduler::run_due(&state, now_ms()).await;
 

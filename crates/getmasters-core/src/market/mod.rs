@@ -486,7 +486,11 @@ mod policy_tests {
             store.clone(),
             Arc::new(FixtureFetcher::single("sh600519", "贵州茅台", 1700.0)),
         )
-        .with_secondary(Arc::new(FixtureFetcher::single("sh600519", "贵州茅台", 1700.5)));
+        .with_secondary(Arc::new(FixtureFetcher::single(
+            "sh600519",
+            "贵州茅台",
+            1700.5,
+        )));
         let v = md.quote("sh600519", 1_000).await.unwrap();
         assert_eq!(v.row.validation, "verified");
         assert_eq!(v.row.source, "fixture", "primary source is served");
@@ -497,7 +501,11 @@ mod policy_tests {
             store2,
             Arc::new(FixtureFetcher::single("sz000001", "平安银行", 100.0)),
         )
-        .with_secondary(Arc::new(FixtureFetcher::single("sz000001", "平安银行", 105.0)));
+        .with_secondary(Arc::new(FixtureFetcher::single(
+            "sz000001",
+            "平安银行",
+            105.0,
+        )));
         let v2 = md2.quote("sz000001", 1_000).await.unwrap();
         assert_eq!(v2.row.validation, "disputed");
         assert_eq!(v2.row.close, Some(100.0), "still the primary's number");

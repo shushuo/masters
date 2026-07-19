@@ -114,7 +114,8 @@ pub fn parse_tencent(symbol: &str, body: &str) -> Result<FetchedQuote, String> {
     // Datetime like "20240715150000" → first 8 digits are YYYYMMDD.
     let trade_date = get(30).and_then(|dt| {
         let digits: String = dt.chars().filter(|c| c.is_ascii_digit()).collect();
-        (digits.len() >= 8).then(|| format!("{}-{}-{}", &digits[0..4], &digits[4..6], &digits[6..8]))
+        (digits.len() >= 8)
+            .then(|| format!("{}-{}-{}", &digits[0..4], &digits[4..6], &digits[6..8]))
     });
     let trade_date =
         trade_date.ok_or_else(|| format!("tencent quote for {symbol} has no timestamp"))?;

@@ -34,7 +34,8 @@ use getmasters_proto::{
 };
 
 fn fmt_pct(v: Option<f64>) -> String {
-    v.map(|p| format!("{:+.2}%", p * 100.0)).unwrap_or_else(|| "—".into())
+    v.map(|p| format!("{:+.2}%", p * 100.0))
+        .unwrap_or_else(|| "—".into())
 }
 
 use crate::state::AppState;
@@ -184,7 +185,9 @@ fn build_brief(
 
     // Recent disclosures as shared evidence (RETuning multi-source; same for every master → fair).
     let mut news_section = String::new();
-    let has_news = universe.iter().any(|s| news.get(s).is_some_and(|l| !l.is_empty()));
+    let has_news = universe
+        .iter()
+        .any(|s| news.get(s).is_some_and(|l| !l.is_empty()));
     if has_news {
         news_section.push_str("## 近期公告（证据）\n");
         for sym in universe {
@@ -319,7 +322,10 @@ async fn prepare_round(
     for sym in &universe {
         if let Ok(list) = market.announcements(sym, ANNOUNCE_DAYS, now).await {
             if !list.is_empty() {
-                news.insert(sym.clone(), list.into_iter().take(ANNOUNCE_PER_SYMBOL).collect());
+                news.insert(
+                    sym.clone(),
+                    list.into_iter().take(ANNOUNCE_PER_SYMBOL).collect(),
+                );
             }
         }
     }
@@ -396,7 +402,14 @@ fn settle_round(
                     t.insert(b.clone(), 100.0);
                 }
             }
-            (t, true, None, None, None, Some("基准：买入持有".to_string()))
+            (
+                t,
+                true,
+                None,
+                None,
+                None,
+                Some("基准：买入持有".to_string()),
+            )
         } else {
             match replies.remove(&i) {
                 Some(Ok(reply)) => match getmasters_core::simlab::parse_targets(&reply.raw) {
@@ -404,7 +417,8 @@ fn settle_round(
                         let (clean, dropped) = enforce_constraints(&raw_targets, universe, cons);
                         let mut summary = summarize_targets(&clean);
                         if !dropped.is_empty() {
-                            summary.push_str(&format!("（已忽略池外/越界：{}）", dropped.join("、")));
+                            summary
+                                .push_str(&format!("（已忽略池外/越界：{}）", dropped.join("、")));
                         }
                         (
                             clean,
@@ -437,20 +451,25 @@ fn settle_round(
         };
 
         // Rebalance (parsed decision) or hold (unparsed/failed → keep positions & cash).
-        let (new_positions, new_cash, unvalued) = if parsed
-            && (!targets_clean.is_empty() || is_bench)
-        {
-            let r = rebalance(&snap.positions, snap.nav, &targets_clean, prices, cons.fee_bps);
-            (r.positions, r.cash, r.unvalued_count)
-        } else {
-            let positions: Vec<(String, f64, Option<f64>)> = snap
-                .positions
-                .iter()
-                .map(|(s, q)| (s.clone(), *q, None))
-                .collect();
-            let (_, unvalued) = portfolio_nav(snap.cash, &snap.positions, prices);
-            (positions, snap.cash, unvalued)
-        };
+        let (new_positions, new_cash, unvalued) =
+            if parsed && (!targets_clean.is_empty() || is_bench) {
+                let r = rebalance(
+                    &snap.positions,
+                    snap.nav,
+                    &targets_clean,
+                    prices,
+                    cons.fee_bps,
+                );
+                (r.positions, r.cash, r.unvalued_count)
+            } else {
+                let positions: Vec<(String, f64, Option<f64>)> = snap
+                    .positions
+                    .iter()
+                    .map(|(s, q)| (s.clone(), *q, None))
+                    .collect();
+                let (_, unvalued) = portfolio_nav(snap.cash, &snap.positions, prices);
+                (positions, snap.cash, unvalued)
+            };
 
         let _ = store.replace_sim_positions(&snap.participant_id, &new_positions);
         let _ = store.set_sim_participant_cash(&snap.participant_id, new_cash);
@@ -543,7 +562,14 @@ async fn run_round_inner(
         .map(|(i, s)| {
             (
                 i,
-                build_brief(sim, &prep.cons_dto, s, &prep.universe, &prep.quotes, &prep.news),
+                build_brief(
+                    sim,
+                    &prep.cons_dto,
+                    s,
+                    &prep.universe,
+                    &prep.quotes,
+                    &prep.news,
+                ),
             )
         })
         .collect();
@@ -643,23 +669,32 @@ async fn run_round_streaming(
         .filter(|s| s.slug != BENCHMARK_SLUG)
         .map(|s| s.slug.clone())
         .collect();
-    let _ = tx.send(GroupStreamEvent::RoundStart { round: 1, addressed });
+    let _ = tx.send(GroupStreamEvent::RoundStart {
+        round: 1,
+        addressed,
+    });
 
     let mut handles: Vec<(usize, JoinHandle<Result<MasterReply, String>>)> = Vec::new();
     for (i, snap) in prep.snaps.iter().enumerate() {
         if snap.slug == BENCHMARK_SLUG {
             continue;
         }
-        let brief = build_brief(&sim, &prep.cons_dto, snap, &prep.universe, &prep.quotes, &prep.news);
+        let brief = build_brief(
+            &sim,
+            &prep.cons_dto,
+            snap,
+            &prep.universe,
+            &prep.quotes,
+            &prep.news,
+        );
         let state = state.clone();
         let project_id = sim.project_id.clone();
         let sim_id = sim.id.clone();
         let slug = snap.slug.clone();
         let tx = tx.clone();
-        let handle =
-            tokio::spawn(
-                async move { stream_sim_master(&state, &project_id, &sim_id, &slug, &brief, tx).await },
-            );
+        let handle = tokio::spawn(async move {
+            stream_sim_master(&state, &project_id, &sim_id, &slug, &brief, tx).await
+        });
         aborts.lock().unwrap().push(handle.abort_handle());
         handles.push((i, handle));
     }
@@ -710,17 +745,24 @@ async fn stream_sim_master(
     };
 
     let store = state.agent.store();
-    let session = match store.create_session(Some(project_id), Some(&format!("sim:{sim_id}:{slug}"))) {
-        Ok(s) => s,
-        Err(e) => {
-            let e = e.to_string();
-            send(AgentEvent::Error(e.clone()));
-            return Err(e);
-        }
-    };
+    let session =
+        match store.create_session(Some(project_id), Some(&format!("sim:{sim_id}:{slug}"))) {
+            Ok(s) => s,
+            Err(e) => {
+                let e = e.to_string();
+                send(AgentEvent::Error(e.clone()));
+                return Err(e);
+            }
+        };
 
     let mut stream = match crate::master::run_master_stream(
-        state, project_id, &session.id, slug, &master, Some(brief), &[],
+        state,
+        project_id,
+        &session.id,
+        slug,
+        &master,
+        Some(brief),
+        &[],
     )
     .await
     {
@@ -787,7 +829,10 @@ pub fn leaderboard(store: &Store, sim_id: &str) -> Result<Vec<SimLeaderboardRowD
         let latest = series.last().map(|(_, v)| v.clone());
         rows.push(SimLeaderboardRowDto {
             master_slug: p.master_slug.clone(),
-            nav: latest.as_ref().and_then(|v| v.nav).or(Some(sim.starting_cash)),
+            nav: latest
+                .as_ref()
+                .and_then(|v| v.nav)
+                .or(Some(sim.starting_cash)),
             cash: latest.as_ref().map(|v| v.cash).unwrap_or(p.cash),
             return_pct: latest.as_ref().and_then(|v| v.return_pct).or(Some(0.0)),
             alpha: None,
@@ -952,7 +997,9 @@ pub fn build_report(store: &Store, sim: &SimulationRow) -> Result<String, String
             } else {
                 fmt_pct(r.alpha)
             },
-            r.nav.map(|n| format!("{n:.0}")).unwrap_or_else(|| "—".into()),
+            r.nav
+                .map(|n| format!("{n:.0}"))
+                .unwrap_or_else(|| "—".into()),
         ));
     }
     md.push('\n');
