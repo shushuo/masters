@@ -49,7 +49,11 @@ function QuoteLine({ quote }: { quote: QuoteDto | undefined }) {
       )}
       <span className="text-xs text-faint">
         {t("watch.dataAsOf")} {quote.trade_date} · {quote.source}
-        {quote.stale ? ` · ⚠ ${t("watch.stale")}` : ""}
+        {quote.stale
+          ? ` · ⚠ ${t("watch.stale")}`
+          : quote.validation === "disputed"
+            ? ` · ⚠ ${t("watch.disputed")}`
+            : ""}
       </span>
     </span>
   );

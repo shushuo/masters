@@ -21,7 +21,7 @@ use tokio::sync::mpsc::{self, UnboundedSender};
 use tokio::task::{AbortHandle, JoinHandle};
 
 use getmasters_core::agent::AgentEvent;
-use getmasters_core::market::{normalize_symbol, MarketData, QuoteView};
+use getmasters_core::market::{normalize_symbol, QuoteView};
 
 use crate::group::GroupStreamEvent;
 use getmasters_core::simlab::{
@@ -169,8 +169,14 @@ fn build_brief(
                     .map(|c| format!("{c:+.2}%"))
                     .unwrap_or_default();
                 let name = q.row.name.as_deref().unwrap_or("");
-                let stale = if q.stale { " ⚠数据陈旧" } else { "" };
-                quote_table.push_str(&format!("- {sym} {name}: 收盘 {close} {chg}{stale}\n"));
+                let flag = if q.stale {
+                    " ⚠数据陈旧"
+                } else if q.row.validation == "disputed" {
+                    " ⚠双源存疑"
+                } else {
+                    ""
+                };
+                quote_table.push_str(&format!("- {sym} {name}: 收盘 {close} {chg}{flag}\n"));
             }
             None => quote_table.push_str(&format!("- {sym}: 暂无行情（本轮无法交易该标的）\n")),
         }
@@ -284,7 +290,7 @@ async fn prepare_round(
     let cons_dto = constraints_of(sim);
     let cons = to_core_constraints(&cons_dto);
 
-    let market = MarketData::new(store.clone(), state.market.clone());
+    let market = state.market_data(store.clone());
     let now = now_ms();
     let mut quotes: BTreeMap<String, QuoteView> = BTreeMap::new();
     let mut prices: BTreeMap<String, f64> = BTreeMap::new();

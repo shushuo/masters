@@ -73,6 +73,9 @@ pub struct AppState {
     /// Market-data upstream adapter (investing vertical, ADR-0017). The live daemon uses the
     /// Eastmoney adapter; tests inject the core `FixtureFetcher`.
     pub market: Arc<dyn getmasters_core::market::MarketFetcher>,
+    /// Optional second market-data source for dual-source cross-validation (ADR-0017). Opt-in via
+    /// `GETMASTERS_MARKET_DUAL_SOURCE`; `None` → single-source `unverified`.
+    pub market_secondary: Option<Arc<dyn getmasters_core::market::MarketFetcher>>,
     /// Briefly-cached cloud daily snapshot (D13 heartbeat proxy; `(fetched_ms, payload)`).
     snapshot_cache: Arc<Mutex<Option<(i64, getmasters_proto::DailySnapshotDto)>>>,
     /// Lazily-built, per-project agents (files + knowledge enabled), keyed by project id.
@@ -91,6 +94,7 @@ impl AppState {
             cfg: Config::default(),
             email: crate::delivery::default_transport(),
             market: crate::market_fetch::default_fetcher(),
+            market_secondary: crate::market_fetch::secondary_fetcher(),
             snapshot_cache: Arc::new(Mutex::new(None)),
             session_agents: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -127,6 +131,25 @@ impl AppState {
     ) -> Self {
         self.market = market;
         self
+    }
+
+    /// Set the optional second market-data source (tests inject a fixture to exercise validation).
+    pub fn with_market_secondary(
+        mut self,
+        secondary: Arc<dyn getmasters_core::market::MarketFetcher>,
+    ) -> Self {
+        self.market_secondary = Some(secondary);
+        self
+    }
+
+    /// Build a [`MarketData`] over the read paths (quotes endpoint / portfolio / sim briefs),
+    /// wired with the optional second source so served quotes carry a `verified`/`disputed` flag.
+    pub fn market_data(&self, store: getmasters_core::store::Store) -> getmasters_core::market::MarketData {
+        let md = getmasters_core::market::MarketData::new(store, self.market.clone());
+        match &self.market_secondary {
+            Some(sec) => md.with_secondary(sec.clone()),
+            None => md,
+        }
     }
 
     /// Use a specific secret store (the daemon supplies the OS keychain).
