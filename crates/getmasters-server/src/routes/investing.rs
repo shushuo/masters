@@ -11,7 +11,6 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 
-use getmasters_core::market::MarketData;
 use getmasters_core::store::DeleteAssetOutcome;
 use getmasters_proto::{
     AssetDto, BriefingDto, InvestingWorkspaceDto, PortfolioDto, PortfolioPositionDto, QuoteDto,
@@ -181,7 +180,7 @@ pub async fn get_portfolio(
 ) -> Result<Json<PortfolioDto>, AppError> {
     let store = state.agent.store();
     store.get_project(&id)?; // 404 if unknown
-    let market = MarketData::new(store.clone(), state.market.clone());
+    let market = state.market_data(store.clone());
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
@@ -235,7 +234,7 @@ pub async fn list_quotes(
 ) -> Result<Json<Vec<QuoteDto>>, AppError> {
     let store = state.agent.store();
     store.get_project(&id)?; // 404 if unknown
-    let market = MarketData::new(store.clone(), state.market.clone());
+    let market = state.market_data(store.clone());
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)

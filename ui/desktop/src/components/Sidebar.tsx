@@ -3,6 +3,7 @@ import {
   MessagesSquare,
   Newspaper,
   Star,
+  FlaskConical,
   Monitor,
   Moon,
   PanelLeft,
@@ -197,6 +198,7 @@ export function Sidebar({
     { key: "ask", label: t("nav.ask"), icon: MessagesSquare },
     { key: "watch", label: t("nav.watch"), icon: Star },
     { key: "briefings", label: t("nav.briefings"), icon: Newspaper, dot: hasNewBriefings },
+    { key: "simlab", label: t("nav.simlab"), icon: FlaskConical },
   ];
 
   // ⌘/Ctrl+N starts a new topic from anywhere.

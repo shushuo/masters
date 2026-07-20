@@ -74,6 +74,40 @@ pub async fn run_due(state: &AppState, now_ms: i64) {
     };
 
     for sched in due {
+        // A sim-driving schedule (模拟投资实验室) runs a simulation round instead of a recipe,
+        // reusing the same history + delivery machinery.
+        if let Some(sim_id) = &sched.simulation_id {
+            let outcome = crate::simlab::run_round(state, sim_id).await;
+            let (status, summary) = match &outcome {
+                Ok(r) => ("ok", truncate(&sim_round_digest(r), 200)),
+                Err(e) => {
+                    tracing::warn!(schedule = %sched.id, error = %e, "scheduler: sim round failed");
+                    ("error", truncate(e, 200))
+                }
+            };
+            let _ = store.record_scheduled_run(
+                &sched.id,
+                &sched.project_id,
+                status,
+                None,
+                Some(&summary),
+            );
+            if outcome.is_ok() && (sched.deliver_notify || sched.deliver_email) {
+                crate::delivery::deliver(
+                    state,
+                    &sched.project_id,
+                    None,
+                    "模拟盘轮次",
+                    &summary,
+                    sched.deliver_notify,
+                    sched.deliver_email,
+                )
+                .await;
+            }
+            advance(&store, &sched, now_ms);
+            continue;
+        }
+
         let params: HashMap<String, String> =
             serde_json::from_str(&sched.params).unwrap_or_default();
         let recipe_store = crate::recipe::RecipeStore::new(
@@ -130,18 +164,43 @@ pub async fn run_due(state: &AppState, now_ms: i64) {
             }
         }
 
-        // Advance the schedule.
-        if sched.kind == "cron" {
-            let next = sched
-                .cron_expr
-                .as_deref()
-                .and_then(|e| next_after(e, now_ms).ok().flatten());
-            let _ = store.set_schedule_next(&sched.id, next, next.is_some());
-        } else {
-            // One-off: done after a single fire.
-            let _ = store.set_schedule_next(&sched.id, None, false);
-        }
+        advance(&store, &sched, now_ms);
     }
+}
+
+/// Advance a schedule after firing (cron → next occurrence; once → disabled).
+fn advance(
+    store: &getmasters_core::store::Store,
+    sched: &getmasters_core::store::ScheduleRow,
+    now_ms: i64,
+) {
+    if sched.kind == "cron" {
+        let next = sched
+            .cron_expr
+            .as_deref()
+            .and_then(|e| next_after(e, now_ms).ok().flatten());
+        let _ = store.set_schedule_next(&sched.id, next, next.is_some());
+    } else {
+        // One-off: done after a single fire.
+        let _ = store.set_schedule_next(&sched.id, None, false);
+    }
+}
+
+/// A one-line digest of a simulation round for the run history + delivery.
+fn sim_round_digest(r: &getmasters_proto::SimRoundResultDto) -> String {
+    let mut parts: Vec<String> = r
+        .leaderboard
+        .iter()
+        .map(|row| {
+            let ret = row
+                .return_pct
+                .map(|p| format!("{:+.1}%", p * 100.0))
+                .unwrap_or_else(|| "—".into());
+            format!("{} {}", row.master_slug, ret)
+        })
+        .collect();
+    parts.truncate(6);
+    format!("第 {} 轮：{}", r.round_no, parts.join(" · "))
 }
 
 /// Spawn the background tick loop. It runs until the tokio runtime shuts down (v1 fires only while

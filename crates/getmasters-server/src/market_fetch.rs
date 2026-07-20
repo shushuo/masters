@@ -55,6 +55,82 @@ pub fn default_fetcher() -> Arc<dyn MarketFetcher> {
     Arc::new(EastmoneyFetcher::new())
 }
 
+/// The **Tencent** (`qt.gtimg.cn`) adapter — the documented second source for dual-source
+/// cross-validation (ADR-0017). GBK plain-text (`~`-delimited), so parsing decodes bytes as
+/// GBK-ish latin fallback for the numeric fields we need (name may be mojibake, but we only compare
+/// closes). Wired **opt-in** (`GETMASTERS_MARKET_DUAL_SOURCE`) until validated against the live
+/// feed — an unverified parser must never silently flag real quotes `disputed`.
+pub struct TencentFetcher {
+    client: reqwest::Client,
+}
+
+impl TencentFetcher {
+    pub fn new() -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .user_agent("Mozilla/5.0 (getmasters-desktop)")
+            .build()
+            .expect("reqwest client");
+        Self { client }
+    }
+}
+
+impl Default for TencentFetcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// The opt-in second source, if `GETMASTERS_MARKET_DUAL_SOURCE` is set to a non-empty value.
+pub fn secondary_fetcher() -> Option<Arc<dyn MarketFetcher>> {
+    match std::env::var("GETMASTERS_MARKET_DUAL_SOURCE") {
+        Ok(v) if !v.is_empty() => Some(Arc::new(TencentFetcher::new())),
+        _ => None,
+    }
+}
+
+/// Pure parser for a `qt.gtimg.cn` quote line: `v_sh600519="1~名称~600519~1700.00~1690.00~…";`.
+/// Field indices (gtimg convention): 1 name, 3 current/close, 4 prev close, 30 datetime
+/// (`YYYYMMDDHHMMSS`), 32 change %. Honesty rule: no usable price → error (never invented).
+pub fn parse_tencent(symbol: &str, body: &str) -> Result<FetchedQuote, String> {
+    // Take the quoted payload between the first '="' and the trailing '"'.
+    let start = body
+        .find("=\"")
+        .map(|i| i + 2)
+        .ok_or_else(|| format!("bad tencent body for {symbol}"))?;
+    let rest = &body[start..];
+    let end = rest
+        .find('"')
+        .ok_or_else(|| format!("unterminated tencent body for {symbol}"))?;
+    let fields: Vec<&str> = rest[..end].split('~').collect();
+    let get = |i: usize| fields.get(i).map(|s| s.trim()).filter(|s| !s.is_empty());
+    let num = |i: usize| get(i).and_then(|s| s.parse::<f64>().ok());
+
+    let close = num(3);
+    let prev_close = num(4);
+    if close.is_none() && prev_close.is_none() {
+        return Err(format!("tencent quote for {symbol} has no usable price"));
+    }
+    // Datetime like "20240715150000" → first 8 digits are YYYYMMDD.
+    let trade_date = get(30).and_then(|dt| {
+        let digits: String = dt.chars().filter(|c| c.is_ascii_digit()).collect();
+        (digits.len() >= 8)
+            .then(|| format!("{}-{}-{}", &digits[0..4], &digits[4..6], &digits[6..8]))
+    });
+    let trade_date =
+        trade_date.ok_or_else(|| format!("tencent quote for {symbol} has no timestamp"))?;
+
+    Ok(FetchedQuote {
+        symbol: symbol.to_string(),
+        name: get(1).map(str::to_string),
+        market: "cn-a".into(),
+        trade_date,
+        close,
+        prev_close,
+        change_pct: num(32),
+    })
+}
+
 /// `sh600519` → push2 `secid` `1.600519` (sh→1, sz→0).
 fn secid(symbol: &str) -> Result<String, String> {
     let (ex, code) = symbol.split_at(2);
@@ -262,6 +338,35 @@ impl MarketFetcher for EastmoneyFetcher {
     }
 }
 
+#[async_trait]
+impl MarketFetcher for TencentFetcher {
+    fn source_id(&self) -> &'static str {
+        "tencent"
+    }
+
+    async fn fetch_quote(&self, symbol: &str) -> Result<FetchedQuote, String> {
+        // gtimg keys on the same `sh`/`sz` + code form we already use.
+        let url = format!("https://qt.gtimg.cn/q={symbol}");
+        let bytes = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("tencent fetch failed: {e}"))?
+            .bytes()
+            .await
+            .map_err(|e| format!("tencent body read failed: {e}"))?;
+        // GBK payload; we only need the ASCII numeric fields, so a lossy latin decode suffices for
+        // the digits (the CJK name may be mojibake, but closes/dates are ASCII).
+        let body: String = bytes.iter().map(|&b| b as char).collect();
+        parse_tencent(symbol, &body)
+    }
+
+    async fn search(&self, _query: &str) -> Result<Vec<SymbolHit>, String> {
+        Err("tencent adapter is quote-only (second source)".into())
+    }
+}
+
 /// Minimal percent-encoding for the query param (UTF-8 bytes; keeps unreserved ASCII).
 fn urlencode(s: &str) -> String {
     let mut out = String::with_capacity(s.len() * 3);
@@ -371,5 +476,34 @@ mod tests {
         assert_eq!(secid("sh600519").unwrap(), "1.600519");
         assert_eq!(secid("sz000001").unwrap(), "0.000001");
         assert!(secid("of110011").is_err());
+    }
+
+    #[test]
+    fn parses_a_tencent_quote() {
+        // gtimg line: fields[1]=name, [3]=close, [4]=prev, [30]=datetime, [32]=change%.
+        let mut f = vec!["0"; 40];
+        f[1] = "贵州茅台";
+        f[3] = "1700.00";
+        f[4] = "1690.00";
+        f[30] = "20240715150000";
+        f[32] = "0.59";
+        let body = format!("v_sh600519=\"{}\";", f.join("~"));
+        let q = parse_tencent("sh600519", &body).unwrap();
+        assert_eq!(q.symbol, "sh600519");
+        assert_eq!(q.close, Some(1700.0));
+        assert_eq!(q.prev_close, Some(1690.0));
+        assert_eq!(q.change_pct, Some(0.59));
+        assert_eq!(q.trade_date, "2024-07-15");
+    }
+
+    #[test]
+    fn tencent_no_price_errs_and_bad_body_errs() {
+        let mut f = vec!["0"; 40];
+        f[3] = "";
+        f[4] = "";
+        f[30] = "20240715150000";
+        let body = format!("v_sh600519=\"{}\";", f.join("~"));
+        assert!(parse_tencent("sh600519", &body).is_err());
+        assert!(parse_tencent("sh600519", "garbage without quotes").is_err());
     }
 }

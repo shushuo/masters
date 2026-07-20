@@ -24,8 +24,12 @@ export const MASTER_IDENTITIES: Record<string, MasterIdentity> = {
 
 const FALLBACK_COLOR = "#6b7075";
 
+/** The simulation-lab benchmark line (a fixed buy-and-hold, not a master). */
+export const BENCHMARK_SLUG = "__benchmark__";
+
 /** Display name for a slug (falls back to the slug itself for unknown masters). */
 export function masterName(slug: string, locale: "zh" | "en" = "zh"): string {
+  if (slug === BENCHMARK_SLUG) return locale === "en" ? "Benchmark" : "基准";
   const m = MASTER_IDENTITIES[slug];
   if (!m) return slug;
   return locale === "en" ? m.nameEn : m.name;
@@ -38,6 +42,7 @@ export function masterColor(slug: string): string {
 
 /** Avatar glyph: the first character of the Chinese name (or the slug's first letter). */
 export function masterGlyph(slug: string): string {
+  if (slug === BENCHMARK_SLUG) return "基";
   const m = MASTER_IDENTITIES[slug];
   return m ? m.name.slice(0, 1) : (slug.slice(0, 1) || "?").toUpperCase();
 }

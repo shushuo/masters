@@ -6,13 +6,15 @@ import { useCallback, useEffect, useState } from "react";
  * masters hub) live under the `lab` (高级工作台) view; legacy hashes (`#/chat`,
  * `#/projects`, `#/masters`) parse into the matching lab sub-route so old links keep working.
  */
-export type View = "ask" | "watch" | "briefings" | "settings" | "lab";
+export type View = "ask" | "watch" | "briefings" | "simlab" | "settings" | "lab";
 export type LabTab = "chat" | "projects" | "masters";
 
 export interface Route {
   view: View;
   /** Active topic (`#/ask/:sessionId`) or lab chat session (`#/lab/chat/:sessionId`). */
   sessionId?: string;
+  /** Selected simulation (`#/simlab/:sid`). */
+  simId?: string;
   /** Active lab tab (`#/lab/:tab`). */
   labTab?: LabTab;
   /** Selected project (`#/lab/projects/:id`). */
@@ -21,7 +23,7 @@ export interface Route {
   tab?: string;
 }
 
-const VIEWS: View[] = ["ask", "watch", "briefings", "settings", "lab"];
+const VIEWS: View[] = ["ask", "watch", "briefings", "simlab", "settings", "lab"];
 const LAB_TABS: LabTab[] = ["chat", "projects", "masters"];
 
 export function parseHash(hash: string): Route {
@@ -35,6 +37,7 @@ export function parseHash(hash: string): Route {
 
   const view = (VIEWS as string[]).includes(head) ? (head as View) : "ask";
   if (view === "ask") return { view, sessionId: parts[1] };
+  if (view === "simlab") return { view, simId: parts[1] };
   if (view === "lab") {
     const labTab = (LAB_TABS as string[]).includes(parts[1]) ? (parts[1] as LabTab) : "chat";
     if (labTab === "chat") return { view, labTab, sessionId: parts[2] };
@@ -47,6 +50,7 @@ export function parseHash(hash: string): Route {
 export function buildHash(route: Route): string {
   const segs: string[] = [route.view];
   if (route.view === "ask" && route.sessionId) segs.push(route.sessionId);
+  if (route.view === "simlab" && route.simId) segs.push(route.simId);
   if (route.view === "lab") {
     const labTab = route.labTab ?? "chat";
     segs.push(labTab);

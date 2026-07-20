@@ -21,6 +21,26 @@ pub use server::MarketDataServer;
 /// How long a cached quote is served without re-fetching (EOD data — an hour is generous).
 pub const QUOTE_TTL_MS: i64 = 60 * 60 * 1000;
 
+/// Relative tolerance for dual-source close agreement (ADR-0017). Within this → `verified`,
+/// beyond → `disputed` (an explicit ⚠ degrade, never silently picking one).
+pub const VALIDATION_TOLERANCE: f64 = 0.005; // 0.5%
+
+/// Cross-validate two sources' closes into a `validation` verdict (ADR-0017). Pure: both present
+/// and within [`VALIDATION_TOLERANCE`] → `"verified"`; both present but apart → `"disputed"`;
+/// otherwise (no second source, or a missing close) → `"unverified"`.
+pub fn cross_validate(primary: Option<f64>, secondary: Option<f64>, tol: f64) -> &'static str {
+    match (primary, secondary) {
+        (Some(a), Some(b)) if a != 0.0 => {
+            if ((a - b) / a).abs() <= tol {
+                "verified"
+            } else {
+                "disputed"
+            }
+        }
+        _ => "unverified",
+    }
+}
+
 /// Current wall-clock in epoch milliseconds (the one impure edge; the policy math takes `now`).
 fn now_ms() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -151,11 +171,24 @@ pub struct QuoteView {
 pub struct MarketData {
     store: Store,
     fetcher: Arc<dyn MarketFetcher>,
+    /// Optional second source for cross-validation (ADR-0017). Absent → single-source `unverified`.
+    secondary: Option<Arc<dyn MarketFetcher>>,
 }
 
 impl MarketData {
     pub fn new(store: Store, fetcher: Arc<dyn MarketFetcher>) -> Self {
-        Self { store, fetcher }
+        Self {
+            store,
+            fetcher,
+            secondary: None,
+        }
+    }
+
+    /// Add a second source: on a fresh fetch, its close is compared with the primary's and the
+    /// cached row is marked `verified`/`disputed` accordingly (ADR-0017 dual-source validation).
+    pub fn with_secondary(mut self, secondary: Arc<dyn MarketFetcher>) -> Self {
+        self.secondary = Some(secondary);
+        self
     }
 
     /// Serve a quote: fresh cache hit → return it; else fetch + cache; fetch failure → fall
@@ -178,6 +211,17 @@ impl MarketData {
         }
         match self.fetcher.fetch_quote(&symbol).await {
             Ok(q) => {
+                // Dual-source cross-validation (ADR-0017): when a second source is configured,
+                // compare closes and record the verdict on the served row. A disputed pair is
+                // flagged (⚠), never silently reconciled to one number. The secondary is used only
+                // to validate — the primary source remains the served value (a single row per
+                // (symbol, date, source) keeps the cache read deterministic).
+                let mut validation = "unverified";
+                if let Some(sec) = &self.secondary {
+                    if let Ok(sq) = sec.fetch_quote(&symbol).await {
+                        validation = cross_validate(q.close, sq.close, VALIDATION_TOLERANCE);
+                    }
+                }
                 let row = PriceRow {
                     symbol: q.symbol,
                     market: q.market,
@@ -188,7 +232,7 @@ impl MarketData {
                     change_pct: q.change_pct,
                     source: self.fetcher.source_id().into(),
                     fetched_at: now_ms,
-                    validation: "unverified".into(),
+                    validation: validation.into(),
                 };
                 self.store
                     .insert_price(&row)
@@ -424,6 +468,47 @@ mod policy_tests {
         assert_eq!(v.row.close, Some(1700.0));
         // No cache at all → explicit error, never a fabricated number.
         assert!(md_bad.quote("sz000001", 1_000).await.is_err());
+    }
+
+    #[test]
+    fn cross_validate_verdicts() {
+        assert_eq!(cross_validate(Some(100.0), Some(100.2), 0.005), "verified");
+        assert_eq!(cross_validate(Some(100.0), Some(101.0), 0.005), "disputed");
+        assert_eq!(cross_validate(Some(100.0), None, 0.005), "unverified");
+        assert_eq!(cross_validate(None, Some(100.0), 0.005), "unverified");
+    }
+
+    #[tokio::test]
+    async fn dual_source_marks_verified_and_disputed() {
+        // Agreeing sources → verified.
+        let store = Store::open_in_memory().unwrap();
+        let md = MarketData::new(
+            store.clone(),
+            Arc::new(FixtureFetcher::single("sh600519", "贵州茅台", 1700.0)),
+        )
+        .with_secondary(Arc::new(FixtureFetcher::single(
+            "sh600519",
+            "贵州茅台",
+            1700.5,
+        )));
+        let v = md.quote("sh600519", 1_000).await.unwrap();
+        assert_eq!(v.row.validation, "verified");
+        assert_eq!(v.row.source, "fixture", "primary source is served");
+
+        // Disagreeing sources (>0.5%) → disputed, flagged not reconciled.
+        let store2 = Store::open_in_memory().unwrap();
+        let md2 = MarketData::new(
+            store2,
+            Arc::new(FixtureFetcher::single("sz000001", "平安银行", 100.0)),
+        )
+        .with_secondary(Arc::new(FixtureFetcher::single(
+            "sz000001",
+            "平安银行",
+            105.0,
+        )));
+        let v2 = md2.quote("sz000001", 1_000).await.unwrap();
+        assert_eq!(v2.row.validation, "disputed");
+        assert_eq!(v2.row.close, Some(100.0), "still the primary's number");
     }
 
     #[tokio::test]

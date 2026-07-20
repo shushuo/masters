@@ -40,6 +40,11 @@ fn current(state: &AppState) -> SettingsDto {
             state.agent.store().get_setting("telemetry_enabled"),
             Ok(Some(v)) if v == "false"
         ),
+        // Redaction mode is off by default; only an explicit "true" enables it (ADR-0016).
+        redaction_enabled: matches!(
+            state.agent.store().get_setting("redaction_enabled"),
+            Ok(Some(v)) if v == "true"
+        ),
     }
 }
 
@@ -95,6 +100,9 @@ pub async fn update(
     }
     if let Some(enabled) = body.telemetry_enabled {
         store.set_setting("telemetry_enabled", if enabled { "true" } else { "false" })?;
+    }
+    if let Some(enabled) = body.redaction_enabled {
+        store.set_setting("redaction_enabled", if enabled { "true" } else { "false" })?;
     }
     // Provider/model changes take effect for new daemon launches; active sessions keep the
     // provider resolved at startup (live provider swap is a later refinement).

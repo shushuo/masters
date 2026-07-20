@@ -163,7 +163,11 @@ pub async fn deliver(
         return;
     };
     let password = state.secrets.get(SECRET_SMTP_PASSWORD).unwrap_or_default();
-    let body = redacted_body(content);
+    let mut body = redacted_body(content);
+    // Redaction mode (ADR-0016): mask monetary detail before it leaves the device.
+    if redaction_enabled(&store) {
+        body = redact_amounts(&body);
+    }
     let msg = OutboundEmail {
         to: cfg.to.clone(),
         from: cfg.from.clone(),
@@ -218,6 +222,52 @@ fn redacted_body(content: &str) -> String {
         }
         _ => content.to_string(),
     }
+}
+
+/// Whether **redaction mode** is on (ADR-0016): mask monetary detail before content leaves the
+/// device. Off by default (only an explicit `"true"` enables it).
+fn redaction_enabled(store: &Store) -> bool {
+    matches!(store.get_setting("redaction_enabled"), Ok(Some(v)) if v == "true")
+}
+
+/// Redact monetary amounts from text for outbound delivery (ADR-0016 redaction mode). Masks decimal
+/// figures (prices/amounts), currency-prefixed numbers, and large (≥5-digit) integers with `▢▢`,
+/// while sparing percentages (returns), plain small integers, and dates. Pure + conservative:
+/// numbers are the only thing touched, and the surrounding text/units are kept for readability.
+pub fn redact_amounts(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < chars.len() {
+        if !chars[i].is_ascii_digit() {
+            out.push(chars[i]);
+            i += 1;
+            continue;
+        }
+        // Read a full number token (digits + thousands separators + a decimal point).
+        let start = i;
+        let mut has_dot = false;
+        let mut digits = 0usize;
+        while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == ',' || chars[i] == '.') {
+            if chars[i] == '.' {
+                has_dot = true;
+            } else if chars[i].is_ascii_digit() {
+                digits += 1;
+            }
+            i += 1;
+        }
+        let after = chars.get(i).copied();
+        let before = start.checked_sub(1).and_then(|j| chars.get(j).copied());
+        let is_pct = matches!(after, Some('%') | Some('％'));
+        let currency = matches!(before, Some('¥') | Some('$') | Some('￥'));
+        if !is_pct && (has_dot || currency || digits >= 5) {
+            out.push('▢');
+            out.push('▢');
+        } else {
+            out.extend(&chars[start..i]);
+        }
+    }
+    out
 }
 
 fn audit(
@@ -279,6 +329,18 @@ mod tests {
         assert_eq!(cfg.host, "smtp.example.com");
         assert_eq!(cfg.port, 587); // default when unset
         assert_eq!(cfg.to, "me@example.com");
+    }
+
+    #[test]
+    fn redact_amounts_masks_money_not_percentages_or_dates() {
+        let s = "现价 1700.00 元，成本 ¥1699.50，持仓市值 120000，收益 +10.5%，日期 2026-07-15。";
+        let r = redact_amounts(s);
+        assert!(!r.contains("1700.00"), "price masked");
+        assert!(!r.contains("1699.50"), "currency amount masked");
+        assert!(!r.contains("120000"), "large amount masked");
+        assert!(r.contains("+10.5%"), "percentage kept");
+        assert!(r.contains("2026-07-15"), "date kept");
+        assert!(r.contains('▢'));
     }
 
     #[test]

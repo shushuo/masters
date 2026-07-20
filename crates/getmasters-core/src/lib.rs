@@ -22,6 +22,7 @@ pub mod prompt;
 pub mod provider;
 pub mod revision;
 pub mod secrets;
+pub mod simlab;
 pub mod skills;
 pub mod store;
 pub mod study;

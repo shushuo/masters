@@ -56,6 +56,15 @@ export type DailySnapshotDto = components["schemas"]["DailySnapshotDto"];
 export type QuoteDto = components["schemas"]["QuoteDto"];
 export type InvestingWorkspaceDto = components["schemas"]["InvestingWorkspaceDto"];
 export type BriefingDto = components["schemas"]["BriefingDto"];
+export type SimulationDto = components["schemas"]["SimulationDto"];
+export type CreateSimulationRequest = components["schemas"]["CreateSimulationRequest"];
+export type SimConstraintsDto = components["schemas"]["SimConstraintsDto"];
+export type SimLeaderboardRowDto = components["schemas"]["SimLeaderboardRowDto"];
+export type SimDecisionDto = components["schemas"]["SimDecisionDto"];
+export type SimRoundDto = components["schemas"]["SimRoundDto"];
+export type SimRoundResultDto = components["schemas"]["SimRoundResultDto"];
+export type SetSimScheduleRequest = components["schemas"]["SetSimScheduleRequest"];
+export type SimReportDto = components["schemas"]["SimReportDto"];
 
 /** Connection details handed over by the daemon handshake (`GETMASTERSD_READY`). */
 export interface DaemonConn {
@@ -308,6 +317,130 @@ export class MastersClient {
       headers: this.headers(),
     });
     if (!res.ok) throw new Error(`getPortfolio failed: ${res.status}`);
+    return res.json();
+  }
+
+  // --- Simulation Investment Lab (模拟投资实验室) ---------------------------
+
+  /** A project's simulations (newest first), each with its leaderboard. */
+  async listSimulations(projectId: string): Promise<SimulationDto[]> {
+    const res = await fetch(`${this.base()}/projects/${projectId}/simulations`, {
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`listSimulations failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** Create a simulation (masters + given conditions). */
+  async createSimulation(
+    projectId: string,
+    body: CreateSimulationRequest,
+  ): Promise<SimulationDto> {
+    const res = await fetch(`${this.base()}/projects/${projectId}/simulations`, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`createSimulation failed: ${res.status} ${await res.text()}`);
+    return res.json();
+  }
+
+  /** One simulation with its leaderboard. */
+  async getSimulation(projectId: string, sid: string): Promise<SimulationDto> {
+    const res = await fetch(`${this.base()}/projects/${projectId}/simulations/${sid}`, {
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`getSimulation failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** Delete a simulation. */
+  async deleteSimulation(projectId: string, sid: string): Promise<void> {
+    const res = await fetch(`${this.base()}/projects/${projectId}/simulations/${sid}`, {
+      method: "DELETE",
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`deleteSimulation failed: ${res.status}`);
+  }
+
+  /** Start one decision round (runs in the background; poll getSimulation until not "running").
+   * 202 = started; 409 = a round is already in flight; 400 = the simulation has ended. */
+  async runSimulationRound(projectId: string, sid: string): Promise<void> {
+    const res = await fetch(
+      `${this.base()}/projects/${projectId}/simulations/${sid}/rounds`,
+      { method: "POST", headers: this.headers() },
+    );
+    if (!res.ok) throw new Error(`runSimulationRound failed: ${res.status} ${await res.text()}`);
+  }
+
+  /** Set a simulation's lifecycle state (`active` | `paused` | `ended`). */
+  async setSimulationState(
+    projectId: string,
+    sid: string,
+    state: "active" | "paused" | "ended",
+  ): Promise<SimulationDto> {
+    const res = await fetch(
+      `${this.base()}/projects/${projectId}/simulations/${sid}/state/${state}`,
+      { method: "PUT", headers: this.headers() },
+    );
+    if (!res.ok) throw new Error(`setSimulationState failed: ${res.status} ${await res.text()}`);
+    return res.json();
+  }
+
+  /** A Markdown report: conditions + leaderboard + every round's decisions and reasoning. */
+  async getSimulationReport(projectId: string, sid: string): Promise<SimReportDto> {
+    const res = await fetch(
+      `${this.base()}/projects/${projectId}/simulations/${sid}/report`,
+      { headers: this.headers() },
+    );
+    if (!res.ok) throw new Error(`getSimulationReport failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** Reset a simulation to round 0 under the same conditions (rerun the experiment). */
+  async resetSimulation(projectId: string, sid: string): Promise<SimulationDto> {
+    const res = await fetch(
+      `${this.base()}/projects/${projectId}/simulations/${sid}/reset`,
+      { method: "POST", headers: this.headers() },
+    );
+    if (!res.ok) throw new Error(`resetSimulation failed: ${res.status} ${await res.text()}`);
+    return res.json();
+  }
+
+  /** Round history with per-master decisions + reasoning (newest first). */
+  async listSimulationRounds(projectId: string, sid: string): Promise<SimRoundDto[]> {
+    const res = await fetch(
+      `${this.base()}/projects/${projectId}/simulations/${sid}/rounds`,
+      { headers: this.headers() },
+    );
+    if (!res.ok) throw new Error(`listSimulationRounds failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** Cumulative-return leaderboard with equity series. */
+  async getSimulationLeaderboard(
+    projectId: string,
+    sid: string,
+  ): Promise<SimLeaderboardRowDto[]> {
+    const res = await fetch(
+      `${this.base()}/projects/${projectId}/simulations/${sid}/leaderboard`,
+      { headers: this.headers() },
+    );
+    if (!res.ok) throw new Error(`getSimulationLeaderboard failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** Set or clear the auto-round cron schedule. */
+  async setSimulationSchedule(
+    projectId: string,
+    sid: string,
+    body: SetSimScheduleRequest,
+  ): Promise<SimulationDto> {
+    const res = await fetch(
+      `${this.base()}/projects/${projectId}/simulations/${sid}/schedule`,
+      { method: "PUT", headers: this.headers(), body: JSON.stringify(body) },
+    );
+    if (!res.ok) throw new Error(`setSimulationSchedule failed: ${res.status} ${await res.text()}`);
     return res.json();
   }
 
@@ -837,7 +970,13 @@ export class MastersClient {
       // `max_rounds` only applies to team-bound group sessions (Phase 4f); ignored otherwise.
       ws.send(JSON.stringify({ type: "send", content, max_rounds: maxRounds }));
     };
+    this.bindStream(ws, handlers);
+    return ws;
+  }
 
+  /** Wire a WebSocket's message/error dispatch to the stream handlers (shared by the session run
+   * stream and the simulation-round stream — both speak the same `ServerEvent` protocol). */
+  private bindStream(ws: WebSocket, handlers: StreamHandlers): void {
     ws.onmessage = (ev) => {
       const event = JSON.parse(ev.data as string) as ServerEvent;
       switch (event.type) {
@@ -900,8 +1039,18 @@ export class MastersClient {
           break;
       }
     };
-
     ws.onerror = () => handlers.onError("websocket error");
+  }
+
+  /** Open a live simulation-round stream: the round starts on connect and each master's reasoning
+   * streams attributed via the group callbacks (onGroupStart/onMasterDelta/…/onGroupComplete). A
+   * `{type:"stop"}` or a socket close aborts the round. */
+  openSimStream(projectId: string, sid: string, handlers: StreamHandlers): WebSocket {
+    const url = `ws://127.0.0.1:${this.conn.port}/projects/${projectId}/simulations/${sid}/ws?token=${encodeURIComponent(
+      this.conn.token,
+    )}`;
+    const ws = new WebSocket(url);
+    this.bindStream(ws, handlers);
     return ws;
   }
 
