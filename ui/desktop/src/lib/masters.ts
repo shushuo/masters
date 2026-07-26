@@ -1,8 +1,9 @@
 /**
  * The expert roster's identity table (docs/12 §5.4): slug → Chinese display name +
  * a fixed identity color. The roster is a trust asset — the same face appears in
- * bubbles, chips, and empty states. Colors are hand-picked from the 《大师》 palette
- * family (low saturation, readable as white-on-color at avatar size in both themes).
+ * bubbles, chips, and empty states. Colors are hand-picked from the 沉见 / DeepAnchor
+ * palette family (warm earth tones + one blue; readable as white-on-color at avatar
+ * size in both themes; the chief carries the brand coral).
  */
 
 export interface MasterIdentity {
@@ -15,7 +16,7 @@ export interface MasterIdentity {
 }
 
 export const MASTER_IDENTITIES: Record<string, MasterIdentity> = {
-  chief: { name: "首席顾问", nameEn: "Chief Advisor", color: "#c2593f" },
+  chief: { name: "首席顾问", nameEn: "Chief Advisor", color: "#d3543f" },
   analyst: { name: "研究员", nameEn: "Analyst", color: "#8c6239" },
   risk: { name: "风控官", nameEn: "Risk Officer", color: "#7a4a58" },
   allocation: { name: "配置规划师", nameEn: "Allocation Planner", color: "#9a7b2f" },

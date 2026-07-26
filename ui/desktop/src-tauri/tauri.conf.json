@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "大师 Masters",
+  "productName": "DeepAnchor",
   "version": "0.1.0",
   "identifier": "dev.shushuo.getmasters",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "大师 Masters",
+        "title": "沉见 DeepAnchor",
         "width": 900,
         "height": 700,
         "resizable": true

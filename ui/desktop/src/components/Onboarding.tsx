@@ -93,7 +93,7 @@ export function Onboarding({ client, onDone }: { client: MastersClient; onDone: 
       <div className="w-full max-w-md rounded-lg border border-border bg-surface p-6 text-sm shadow">
         <div className="mb-4 flex flex-col items-center text-center">
           <PandaMark className="size-14" />
-          <h2 className="mt-3 font-display text-xl font-semibold">欢迎来到「大师」</h2>
+          <h2 className="mt-3 font-display text-xl font-semibold">欢迎来到「沉见」</h2>
         </div>
         {step === 1 && (
           /* The three promises (docs/12 §3.4) — the product's posture, stated up front. */
@@ -106,7 +106,7 @@ export function Onboarding({ client, onDone }: { client: MastersClient; onDone: 
         <p className="text-center text-muted">
           {step === 1
             ? "先连接一个模型服务商。密钥保存在系统钥匙串中，不落盘。"
-            : "可选：创建工作区并授予「大师」一个可读写的文件夹。"}
+            : "可选：创建工作区并授予「沉见」一个可读写的文件夹。"}
         </p>
 
         {step === 1 ? (
@@ -192,7 +192,7 @@ export function Onboarding({ client, onDone }: { client: MastersClient; onDone: 
                 onChange={(e) => setFolder(e.target.value)}
               />
               <span className="mt-1 block text-xs text-faint">
-                Masters only ever touches folders you grant. You can change this later in Projects.
+                DeepAnchor only ever touches folders you grant. You can change this later in Projects.
               </span>
             </label>
 

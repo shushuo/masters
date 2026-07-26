@@ -52,7 +52,7 @@ const dict = {
   "watch.title": { zh: "关注", en: "Watching" },
   "watch.subtitle": {
     zh: "你问过的标的会出现在这里，我会替你盯着。",
-    en: "Instruments you ask about land here; Masters keeps an eye on them.",
+    en: "Instruments you ask about land here; DeepAnchor keeps an eye on them.",
   },
   "watch.loading": { zh: "加载中…", en: "Loading…" },
   "watch.empty.title": { zh: "还没有关注任何标的", en: "Not watching anything yet" },

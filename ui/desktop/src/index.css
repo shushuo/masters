@@ -23,9 +23,10 @@
 }
 
 /*
- * Design tokens — the 《大师》 system (docs/12-ux-redesign.md §5).
- * Mood: Claude-Cowork-informed warm minimalism — paper-white neutrals, ink text,
- * a warm coral accent, pill shapes, a floating sidebar. Finance-audience rule:
+ * Design tokens — the 沉见 / DeepAnchor system (docs/12-ux-redesign.md §5).
+ * Palette derived from the cairn logo: warm paper cream ground, espresso-ink stones,
+ * a coral capstone accent. Mood: warm minimalism — paper neutrals, warm-ink text,
+ * a coral accent, pill shapes, a floating sidebar. Finance-audience rule:
  * NO green anywhere in brand/status/semantics — the only green in the entire UI
  * is the market loss color (跌, quote-number convention), kept deliberately.
  * All UI color flows through these CSS variables; the dark theme overrides them
@@ -45,32 +46,32 @@
     "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
   --font-display: var(--font-sans);
 
-  /* surfaces — warm paper white */
-  --color-bg: #faf9f5; /* app canvas (the window ground the content sits on) */
-  --color-surface: #f4f2ec; /* the floating sidebar / sunken panels */
-  --color-surface-2: #ebe8e0; /* cards, hover wells */
-  --color-border: #e6e2d9; /* hairlines */
-  --color-border-strong: #d4cfc3; /* inputs, weightier dividers */
+  /* surfaces — warm paper cream (the cairn's ground) */
+  --color-bg: #f5efe4; /* app canvas (the window ground the content sits on) */
+  --color-surface: #efe8da; /* the floating sidebar / sunken panels */
+  --color-surface-2: #e7dfcd; /* cards, hover wells */
+  --color-border: #e3dbc9; /* hairlines */
+  --color-border-strong: #d2c8b2; /* inputs, weightier dividers */
 
-  /* text — warm ink */
-  --color-text: #1f1e1d;
-  --color-text-muted: #68645c;
-  --color-text-faint: #8a857b; /* timestamps, provenance */
+  /* text — warm espresso ink (echoes the logo's stones) */
+  --color-text: #2b2019;
+  --color-text-muted: #6a5e50;
+  --color-text-faint: #8d8173; /* timestamps, provenance */
 
-  /* accent — warm coral (理财吉利暖色; deep enough for white button text) */
-  --color-accent: #c2593f;
-  --color-accent-hover: #a94b34;
+  /* accent — logo coral, deepened just enough for white button text (AA on paper) */
+  --color-accent: #d3543f;
+  --color-accent-hover: #ba4531;
   --color-accent-fg: #ffffff;
-  --color-accent-subtle: #f7e5de; /* active-nav tint */
+  --color-accent-subtle: #fbe4dd; /* active-nav tint */
 
-  /* brand — the wordmark / seal block */
-  --color-brand: #c2593f;
-  --color-brand-sage: #c98a76; /* secondary warm tint (name kept for the token seam) */
+  /* brand — the wordmark / mark: the capstone coral + the espresso stone */
+  --color-brand: #ef6250; /* the logo capstone hue */
+  --color-brand-sage: #b5654e; /* secondary warm terracotta (name kept for the token seam) */
 
   /* semantic state — warm, green-free family */
-  --color-tool-bg: #f2ede1;
-  --color-tool-fg: #77602c;
-  --color-tool-border: #e4dcc6;
+  --color-tool-bg: #f1ead9;
+  --color-tool-fg: #7a6531;
+  --color-tool-border: #e5dcc3;
   /* success = calm blue (the Cowork "ready" hue) — NOT green, by product rule */
   --color-success: #4a72a8;
   --color-success-hover: #3d6193;
@@ -113,27 +114,27 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --color-bg: #1f1e1d;
-  --color-surface: #262624;
-  --color-surface-2: #30302d;
-  --color-border: #3a3a36;
-  --color-border-strong: #4a4944;
+  --color-bg: #201914;
+  --color-surface: #29201a;
+  --color-surface-2: #332821;
+  --color-border: #3c3128;
+  --color-border-strong: #4c4034;
 
-  --color-text: #f0efea;
-  --color-text-muted: #b3b0a7;
-  --color-text-faint: #8f8c83;
+  --color-text: #f2ebdf;
+  --color-text-muted: #b4a896;
+  --color-text-faint: #8d8271;
 
-  --color-accent: #e08b6d;
-  --color-accent-hover: #e9a58c;
-  --color-accent-fg: #1f1e1d;
-  --color-accent-subtle: #3b2e28;
+  --color-accent: #ef6250;
+  --color-accent-hover: #f4897a;
+  --color-accent-fg: #201914;
+  --color-accent-subtle: #3a251f;
 
-  --color-brand: #e08b6d;
-  --color-brand-sage: #c98a76;
+  --color-brand: #ef6250;
+  --color-brand-sage: #d98a76;
 
-  --color-tool-bg: #2b2820;
-  --color-tool-fg: #cfb87e;
-  --color-tool-border: #3b372a;
+  --color-tool-bg: #2c2519;
+  --color-tool-fg: #d0b880;
+  --color-tool-border: #3d3626;
   --color-success: #7ba3d4;
   --color-success-hover: #8fb2dd;
   --color-danger: #cf7d72;

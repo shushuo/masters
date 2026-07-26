@@ -1,8 +1,10 @@
 <p align="center">
-  <img src="./assets/logo.svg" alt="Masters logo" width="160" />
+  <img src="./assets/logo.svg" alt="沉见 DeepAnchor logo" width="160" />
 </p>
 
-<h1 align="center">Masters</h1>
+<h1 align="center">沉见 · DeepAnchor</h1>
+
+<p align="center"><sub>codename: <code>masters</code> / <code>getmasters</code></sub></p>
 
 <p align="center">
   <em>A local-first, single-user <strong>agentic desktop companion</strong> for <strong>personal study and work</strong>.</em>

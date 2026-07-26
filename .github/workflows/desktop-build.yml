@@ -138,6 +138,6 @@ jobs:
           files: artifacts/*
           generate_release_notes: true
           body: |
-            > **Unsigned build.** macOS: right-click Masters.app → Open (or
-            > `xattr -dr com.apple.quarantine /Applications/Masters.app`). Windows:
+            > **Unsigned build.** macOS: right-click DeepAnchor.app → Open (or
+            > `xattr -dr com.apple.quarantine "/Applications/DeepAnchor.app"`). Windows:
             > SmartScreen → "More info" → "Run anyway".
