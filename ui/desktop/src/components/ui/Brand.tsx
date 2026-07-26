@@ -7,20 +7,16 @@ import { cn } from "./cn";
  * codename) so existing call sites (Sidebar/Chat/Onboarding) need no churn.
  */
 export function PandaMark({ className }: { className?: string }) {
-  // The SVG asset is transparent (no background). We render it on a faint cream
-  // chip: in light mode the chip blends into the paper canvas (reads as "no
-  // background"), while in dark mode it keeps the espresso stones legible instead
-  // of dissolving into the dark ground.
+  // logo.svg is a self-contained warm-paper tile (its own cream ground), so the
+  // mark stays legible on any surface in both themes. We only round the corners.
   return (
-    <span
+    <img
+      src="/logo.svg"
+      alt=""
       aria-hidden
-      className={cn(
-        "inline-flex select-none items-center justify-center overflow-hidden rounded-[5px] bg-[#f4eee2]",
-        className,
-      )}
-    >
-      <img src="/logo.svg" alt="" draggable={false} className="h-full w-full object-contain p-[7%]" />
-    </span>
+      draggable={false}
+      className={cn("select-none rounded-[22%] object-contain", className)}
+    />
   );
 }
 

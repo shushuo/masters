@@ -65,7 +65,7 @@
   --color-accent-subtle: #fbe4dd; /* active-nav tint */
 
   /* brand — the wordmark / mark: the capstone coral + the espresso stone */
-  --color-brand: #ef6250; /* the logo capstone hue */
+  --color-brand: #fc8277; /* the logo capstone hue */
   --color-brand-sage: #b5654e; /* secondary warm terracotta (name kept for the token seam) */
 
   /* semantic state — warm, green-free family */
@@ -129,7 +129,7 @@
   --color-accent-fg: #201914;
   --color-accent-subtle: #3a251f;
 
-  --color-brand: #ef6250;
+  --color-brand: #fc8277;
   --color-brand-sage: #d98a76;
 
   --color-tool-bg: #2c2519;
