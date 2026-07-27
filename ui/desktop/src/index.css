@@ -24,11 +24,11 @@
 
 /*
  * Design tokens — the 沉见 / DeepAnchor system (docs/12-ux-redesign.md §5).
- * Palette derived from the cairn logo: warm paper cream ground, espresso-ink stones,
- * a coral capstone accent. Mood: warm minimalism — paper neutrals, warm-ink text,
- * a coral accent, pill shapes, a floating sidebar. Finance-audience rule:
- * NO green anywhere in brand/status/semantics — the only green in the entire UI
- * is the market loss color (跌, quote-number convention), kept deliberately.
+ * Mood: calm, neutral minimalism — soft off-white surfaces, charcoal ink, and the
+ * cairn's coral used SPARINGLY as an accent (primary actions / links / active state),
+ * never as a wash. Finance-audience rule: NO green anywhere in brand/status/
+ * semantics — the only green in the entire UI is the market loss color (跌,
+ * quote-number convention), kept deliberately.
  * All UI color flows through these CSS variables; the dark theme overrides them
  * in one block so components built on the token utilities recolor automatically.
  *
@@ -46,44 +46,44 @@
     "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
   --font-display: var(--font-sans);
 
-  /* surfaces — warm paper cream (the cairn's ground) */
-  --color-bg: #f5efe4; /* app canvas (the window ground the content sits on) */
-  --color-surface: #efe8da; /* the floating sidebar / sunken panels */
-  --color-surface-2: #e7dfcd; /* cards, hover wells */
-  --color-border: #e3dbc9; /* hairlines */
-  --color-border-strong: #d2c8b2; /* inputs, weightier dividers */
+  /* surfaces — calm neutral paper (a soft off-white, only a hint of warmth) */
+  --color-bg: #f4f3f0; /* app canvas (the window ground the content sits on) */
+  --color-surface: #edece8; /* the floating sidebar / sunken panels */
+  --color-surface-2: #e5e4df; /* cards, hover wells */
+  --color-border: #e2e0da; /* hairlines */
+  --color-border-strong: #ceccc4; /* inputs, weightier dividers */
 
-  /* text — warm espresso ink (echoes the logo's stones) */
-  --color-text: #2b2019;
-  --color-text-muted: #6a5e50;
-  --color-text-faint: #8d8173; /* timestamps, provenance */
+  /* text — neutral charcoal ink (only a trace of warmth) */
+  --color-text: #262420;
+  --color-text-muted: #615e57;
+  --color-text-faint: #8a877f; /* timestamps, provenance */
 
-  /* accent — logo coral, deepened just enough for white button text (AA on paper) */
+  /* accent — coral, used SPARINGLY (primary actions / links / active only) */
   --color-accent: #d3543f;
   --color-accent-hover: #ba4531;
   --color-accent-fg: #ffffff;
-  --color-accent-subtle: #fbe4dd; /* active-nav tint */
+  --color-accent-subtle: #f0eae7; /* faint, near-neutral active-nav tint */
 
-  /* brand — the wordmark / mark: the capstone coral + the espresso stone */
-  --color-brand: #fc8277; /* the logo capstone hue */
-  --color-brand-sage: #b5654e; /* secondary warm terracotta (name kept for the token seam) */
+  /* brand — the mark hue (logo capstone); a small accent, never a wash */
+  --color-brand: #e0604a;
+  --color-brand-sage: #97a09a; /* neutral secondary (name kept for the token seam) */
 
-  /* semantic state — warm, green-free family */
-  --color-tool-bg: #f1ead9;
-  --color-tool-fg: #7a6531;
-  --color-tool-border: #e5dcc3;
+  /* semantic state — neutral surfaces + one accent; green-free family */
+  --color-tool-bg: #edece7;
+  --color-tool-fg: #6b675d;
+  --color-tool-border: #e0ded7;
   /* success = calm blue (the Cowork "ready" hue) — NOT green, by product rule */
   --color-success: #4a72a8;
   --color-success-hover: #3d6193;
-  --color-danger: #a8534b;
-  --color-danger-hover: #91463f;
-  --color-danger-bg: #f6e7e4;
-  --color-danger-fg: #91463f;
-  --color-warning: #9c7020;
-  --color-warning-bg: #f8f0da;
-  --color-warning-fg: #815c16;
+  --color-danger: #b0503f;
+  --color-danger-hover: #98402f;
+  --color-danger-bg: #f1e7e4;
+  --color-danger-fg: #98402f;
+  --color-warning: #8a6d2c;
+  --color-warning-bg: #efece1;
+  --color-warning-fg: #6f571f;
   --color-info: #4a6d8c;
-  --color-info-bg: #e7edf2;
+  --color-info-bg: #e7edf1;
   --color-info-fg: #3b5872;
   /* market gain/loss (investing) — CN convention: 朱红 red = gain/涨, 松绿 green = loss/跌.
      THE ONLY GREEN IN THE UI (quote numbers + ▲▼ redundant coding only; a region toggle is
@@ -107,43 +107,43 @@
 }
 
 /*
- * Dark — warm deep neutrals (the Cowork dark posture), coral lifted for ink ground.
- * Defined ONCE: theme.ts stamps `data-theme="dark"` for both the pinned-dark and
- * system-follows-dark cases.
+ * Dark — neutral deep charcoal; coral lifted just enough for the dark ground but
+ * still an accent, not a wash. Defined ONCE: theme.ts stamps `data-theme="dark"`
+ * for both the pinned-dark and system-follows-dark cases.
  */
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --color-bg: #201914;
-  --color-surface: #29201a;
-  --color-surface-2: #332821;
-  --color-border: #3c3128;
-  --color-border-strong: #4c4034;
+  --color-bg: #1c1b19;
+  --color-surface: #242322;
+  --color-surface-2: #2e2d2b;
+  --color-border: #383733;
+  --color-border-strong: #474641;
 
-  --color-text: #f2ebdf;
-  --color-text-muted: #b4a896;
-  --color-text-faint: #8d8271;
+  --color-text: #ededea;
+  --color-text-muted: #adaaa3;
+  --color-text-faint: #86847d;
 
-  --color-accent: #ef6250;
-  --color-accent-hover: #f4897a;
-  --color-accent-fg: #201914;
-  --color-accent-subtle: #3a251f;
+  --color-accent: #e8705a;
+  --color-accent-hover: #ef8f7d;
+  --color-accent-fg: #1c1b19;
+  --color-accent-subtle: #2f2a27;
 
-  --color-brand: #fc8277;
-  --color-brand-sage: #d98a76;
+  --color-brand: #e8705a;
+  --color-brand-sage: #8f978f;
 
-  --color-tool-bg: #2c2519;
-  --color-tool-fg: #d0b880;
-  --color-tool-border: #3d3626;
+  --color-tool-bg: #26251f;
+  --color-tool-fg: #b0aa98;
+  --color-tool-border: #34332c;
   --color-success: #7ba3d4;
   --color-success-hover: #8fb2dd;
-  --color-danger: #cf7d72;
-  --color-danger-hover: #da948b;
-  --color-danger-bg: #2e201d;
-  --color-danger-fg: #da948b;
-  --color-warning: #d3a854;
-  --color-warning-bg: #2e2919;
-  --color-warning-fg: #dfbd79;
+  --color-danger: #d47f70;
+  --color-danger-hover: #de978a;
+  --color-danger-bg: #2c211d;
+  --color-danger-fg: #de978a;
+  --color-warning: #c7a25a;
+  --color-warning-bg: #2a2519;
+  --color-warning-fg: #d9bd7e;
   --color-info: #8fb2d4;
   --color-info-bg: #23292f;
   --color-info-fg: #a9c6e0;
