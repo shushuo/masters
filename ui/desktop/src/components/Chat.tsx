@@ -298,9 +298,9 @@ export function Chat({
             {turns.length === 0 && (
               <div className="mx-auto mt-16 flex max-w-sm flex-col items-center text-center">
                 <PandaMark className="size-16 opacity-90" />
-                <h2 className="mt-4 text-xl font-semibold text-text">What can Masters do for you?</h2>
+                <h2 className="mt-4 text-xl font-semibold text-text">What can DeepAnchor do for you?</h2>
                 <p className="mt-2 text-sm text-muted">
-                  Ask Masters to work on your granted files — every tool call is gated and audited.
+                  Ask DeepAnchor to work on your granted files — every tool call is gated and audited.
                 </p>
               </div>
             )}
@@ -372,7 +372,7 @@ export function Chat({
           onChange={setInput}
           onSubmit={send}
           disabled={!sessionId}
-          placeholder={sessionId ? "Message Masters…  (Shift+Enter for a new line)" : "Connecting…"}
+          placeholder={sessionId ? "Message DeepAnchor…  (Shift+Enter for a new line)" : "Connecting…"}
           trailing={
             <>
               <Button variant="ghost" onClick={revert} title="Undo the last file change">

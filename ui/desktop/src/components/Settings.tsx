@@ -201,12 +201,12 @@ export function Settings({
       },
       {
         section: "about" as const,
-        title: "About Masters",
-        keywords: "about version local first agentic",
+        title: "About DeepAnchor",
+        keywords: "about version local first agentic deepanchor 沉见",
         node: (
-          <SettingRow title="About Masters" full>
+          <SettingRow title="About DeepAnchor" full>
             <p className="max-w-prose text-[13px] leading-relaxed text-muted">
-              Masters is a local-first, single-user agentic desktop app for personal study and
+              DeepAnchor is a local-first, single-user agentic desktop app for personal study and
               work — an agent that acts on your local files with human-in-the-loop approval. All
               state lives on this device under your data home.
             </p>

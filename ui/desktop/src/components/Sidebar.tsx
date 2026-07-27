@@ -158,7 +158,7 @@ function TopicList({
 }
 
 /**
- * The 《大师》 left rail (docs/12 §2/§3): wordmark, the three user-noun nav items
+ * The 沉见 / DeepAnchor left rail (docs/12 §2/§3): wordmark, the three user-noun nav items
  * (问大师 / 关注 / 动静), the contextual topic list, pinned Settings + theme, and the
  * guardian-status footer. Owns no routing state — App.tsx passes the active view +
  * navigation callbacks down.
